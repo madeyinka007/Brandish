@@ -1,0 +1,69 @@
+{
+    aws ssm put-parameter \
+    --name "/brandish/prod/MONGODB_URI" \
+    --value 'mongodb+srv://BrandAuthority:!Alas2334%40__Qweb@wt-brandish.cosua6n.mongodb.net/?appName=wt-brandish' \
+    --type "String" \
+    --overwrite
+
+    aws ssm put-parameter \
+    --name "/brandish/prod/RECAPTCHA_SECRET" \
+    --value 'XE*__DWm#5SyNZ-mjS3GB*F*C_,P' \
+    --type "String" \
+    --overwrite
+
+    aws ssm put-parameter \
+    --name "/brandish/prod/JWT_SECRET" \
+    --value "kte8SJwAF2O0PjhZ9IozZ8BNdW2TB0jlJaFFaQBtbdY=" \
+    --type "String" \
+    --overwrite
+
+    aws ssm put-parameter \
+    --name "/brandish/prod/S3_BUCKET_NAME" \
+    --value "www.brandish.com.ng" \
+    --type "String"
+
+    aws ssm put-parameter \
+    --name "/brandish/prod/DYNAMO_DEDUP_TABLE" \
+    --value "wtb_view_dedup" \
+    --type "String"
+
+    aws ssm put-parameter \
+    --name "/brandish/prod/DYNAMO_RATELIMIT_TABLE" \
+    --value "wtb_ratelimit" \
+    --type "String"
+
+    aws ssm put-parameter \
+    --name "/brandish/prod/CLOUDFRONT_DIST_ID" \
+    --value "E7MSTPTK3H66F" \
+    --type "String"
+
+    aws ssm put-parameter \
+    --name "/brandish/prod/CF_DOMAIN" \
+    --value "d3868v8k8pzh2k.cloudfront.net" \
+    --type "String"
+
+    aws ssm put-parameter \
+    --name "/brandish/prod/AWS_REGION" \
+    --value "us-east-1" \
+    --type "String"
+
+    aws ssm put-parameter \
+    --name "/brandish/prod/ADMIN_ALERT_EMAIL" \
+    --value "admin@brandish.com.ng" \
+    --type "String"
+
+    aws ssm put-parameter \
+    --name "/brandish/prod/API_BASE_URL" \
+    --value "http://localhost:3000" \
+    --type "String"
+
+    aws ssm put-parameter \
+    --name "/brandish/prod/FRONTEND_URL" \
+    --value "127.0.0.1" \
+    --type "String"
+
+    aws ssm put-parameter \
+    --name "/brandish/prod/SES_FROM_EMAIL" \
+    --value "admin@brandish.com.ng" \
+    --type "String"
+}
