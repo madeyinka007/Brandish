@@ -186,7 +186,8 @@ identically in both trees, per the existing convention (see `docs/development.md
 │   │   │   ├── Tag.ts
 │   │   │   ├── Comment.ts
 │   │   │   └── Subscriber.ts
-│   │   ├── slug.ts                # Identical copy of web/lib/slug.ts
+│   │   ├── slug.ts                # slugify() — pure, collection-agnostic (uniqueSlug added by Posts module)
+│   │   ├── categoryUsage.ts       # isCategoryInUse() — Categories delete-guard seam; stubbed until Posts model exists
 │   │   ├── dynamo.ts              # DynamoDB client + view-dedup, rate-limit, refresh-token stores
 │   │   ├── ses.ts                 # SES email helpers
 │   │   ├── revalidate.ts          # S3 upload + CloudFront invalidation
@@ -196,17 +197,21 @@ identically in both trees, per the existing convention (see `docs/development.md
 │   │   └── index.ts               # TypeScript interfaces for every collection — identical copy of web/types/index.ts
 │   │
 │   ├── scripts/                    # One-off operational scripts (not part of the request path)
-│   │   └── seedSuperAdmin.ts       # Bootstrap the first super-admin — `npm run seed:admin`; see docs/auth.md
+│   │   ├── seedSuperAdmin.ts       # Bootstrap the first super-admin — `npm run seed:admin`; see docs/auth.md
+│   │   └── seedCategories.ts       # Seed the 10 launch categories — `npm run seed:categories`
 │   │
 │   ├── __tests__/                 # Jest unit tests — mirrors routes/controllers/services/middleware/lib/scripts; DB/AWS clients mocked
 │   │   ├── controllers/
 │   │   │   ├── auth.test.ts
-│   │   │   └── users.test.ts
+│   │   │   ├── users.test.ts
+│   │   │   └── categories.test.ts
 │   │   ├── services/
 │   │   │   ├── auth.test.ts
-│   │   │   └── users.test.ts
+│   │   │   ├── users.test.ts
+│   │   │   └── categories.test.ts
 │   │   ├── scripts/
-│   │   │   └── seedSuperAdmin.test.ts
+│   │   │   ├── seedSuperAdmin.test.ts
+│   │   │   └── seedCategories.test.ts
 │   │   ├── middleware/
 │   │   │   ├── auth.test.ts
 │   │   │   ├── recaptcha.test.ts

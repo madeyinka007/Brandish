@@ -35,7 +35,7 @@ imports) so `web/` and `server/` stay fully independent, deployable projects.
   excerpt:     string,            // shown in listing cards and OG meta
   format:      'article' | 'gallery' | 'video', // default 'article'
   coverImage:  string,            // CloudFront URL (uploaded via S3 presigned URL)
-  category:    string,            // slug — one of the 10 fixed categories below
+  category:    string,            // denormalized category slug (see categories; slugs are immutable)
   tags:        string[],          // array of tag slugs — ref → tags.slug; empty array = no tags
   author: {                       // embedded — denormalised for read speed
     _id:       ObjectId,
@@ -89,7 +89,9 @@ returning a `422` before it ever reaches Mongoose (see
 [`docs/api-routes.md`](api-routes.md)); the schema validator is the backstop, not the
 only check.
 
-**Fixed categories** (slug → display name):
+**Seed categories** (slug → display name) — the launch set inserted by
+`server/scripts/seedCategories.ts`. Editors can add more; these aren't a hardcoded ceiling
+(see the `categories` collection below):
 
 | Slug | Display name |
 |---|---|
@@ -122,19 +124,41 @@ an auto-generated subdocument id.
 
 ### `categories`
 
+Categories are a **dynamic, editor-managed** taxonomy (full CRUD) — seeded with the 10
+business verticals below but not limited to them (see [`docs/api-routes.md`](api-routes.md)).
+
 ```ts
 {
   _id:         ObjectId,
-  name:        string,            // e.g. "Public Relations"
-  slug:        string,            // unique index; e.g. "public-relations"
+  name:        string,            // display name, e.g. "Public Relations"
+  slug:        string,            // unique; generated from name on create; IMMUTABLE after
   description: string,
   color:       string,            // hex or CSS variable name for UI accents
+  order:       number,            // manual sort in nav/listings; default 0
+  status:      'active' | 'hidden', // 'hidden' = out of public nav/listing, still exists & referenceable
+  seo: {                          // SEO metadata (field names mirror posts.keywords/ogImage)
+    title:       string,
+    description: string,
+    keywords:    string,
+    ogImage:     string,          // CloudFront URL
+  },
+  createdAt:   Date,
+  updatedAt:   Date,
 }
 ```
 
-**Index:** `{ slug: 1 }` unique.
+**Indexes:** `{ slug: 1 }` unique; `{ status: 1, order: 1 }` (listing).
 
-Mongoose model: `web/lib/models/Category.ts` (identical copy in `server/lib/models/Category.ts`).
+> **The slug is generated from `name` on create and never changes afterward.** `posts.category`
+> stores this slug (denormalized — no ref, no join on post reads), so a mutable slug would
+> orphan every referencing post. Renaming a category's display `name` deliberately leaves
+> its slug alone (slug = ID, name = display text). For the same reason, **deleting a category
+> is blocked (`409 CATEGORY_IN_USE`) while any post still references its slug** — enforced in
+> the categories service via the Post model.
+
+Mongoose model: `web/lib/models/Category.ts` — schema-equivalent `server/lib/models/Category.ts`
+built via `MongoLibrary.createModel` (`CategoryModel extends BaseModel`; see
+[`docs/development.md`](development.md)).
 
 ---
 

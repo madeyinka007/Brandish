@@ -70,7 +70,7 @@ it (`401 NO_SESSION` if absent, `401 INVALID_TOKEN` if invalid/expired).
 | `POST` | `/api/newsletter` | Subscribe — saves unconfirmed subscriber, sends SES confirmation email |
 | `GET` | `/api/newsletter/confirm?token=` | Confirm subscription — sets `confirmedAt`, clears token |
 | `GET` | `/api/newsletter/unsubscribe?token=` | Unsubscribe — sets `active: false` |
-| `GET` | `/api/categories` | List all categories (name, slug, description, color) — for nav/filter UI |
+| `GET` | `/api/categories` | List **active** categories, ordered — for nav/filter UI |
 | `GET` | `/api/tags` | List all tags (name, slug) — for tag-cloud/filter UI |
 | `GET` | `/api/search?q=` | Search published posts by title/excerpt. Query params: `?q=&page=&limit=` |
 
@@ -132,13 +132,24 @@ reaches Mongoose.
 
 | Method | Route | Min role | Description |
 |---|---|---|---|
-| `GET` | `/api/admin/categories` | `editor` | List all categories, full detail |
-| `PUT` | `/api/admin/categories/:id` | `editor` | Edit `description`/`color` only |
+| `GET` | `/api/admin/categories` | `editor` | List all categories (every status), full detail |
+| `POST` | `/api/admin/categories` | `editor` | Create — slug generated from `name`; `409 NAME_EXISTS` on a duplicate |
+| `PUT` | `/api/admin/categories/reorder` | `editor` | Bulk set `order` — body `{ items: [{ id, order }] }` |
+| `PUT` | `/api/admin/categories/:id` | `editor` | Edit `name`/`description`/`color`/`order`/`status`/`seo` — **never `slug`** |
+| `DELETE` | `/api/admin/categories/:id` | `editor` | Delete — **`409 CATEGORY_IN_USE`** if any post references it |
 
-> Categories are a fixed set of 10 (see [`docs/data-model.md`](data-model.md)) — `name`
-> and `slug` are not editable via this route, and there is no create or delete route.
-> Changing a slug would orphan every existing `posts.category` value referencing it and
-> break the `[category]` route in `web/app/[category]/`.
+> Categories are a dynamic, editor-managed taxonomy (see
+> [`docs/data-model.md`](data-model.md#categories)), seeded with 10 verticals but extensible.
+> Two rules protect the denormalized `posts.category` slug link:
+> - **`slug` is generated on create and immutable** — no route edits it. Editing `name`
+>   changes only display text; the slug stays put (so posts don't orphan and the
+>   `[category]` route in `web/app/[category]/` stays stable).
+> - **Delete is blocked while posts reference the category** (`409 CATEGORY_IN_USE`). Reassign
+>   or remove those posts first.
+>
+> The public `GET /api/categories` returns only `status: "active"` categories; the admin
+> `GET` above returns all statuses. `/reorder` is registered before `/:id` so it isn't
+> matched as an id.
 
 ### Tags
 
