@@ -51,25 +51,21 @@ that's sequenced.)
 
 ## 2. Tags
 
-> Build the Tags module. Read `docs/api-routes.md`'s Tags section (just added) —
-> unlike Categories, tags are **not** fixed: editors create them ad hoc, so this module
-> has create and delete.
+> **Already implemented.** Files: `server/lib/models/Tag.ts` (`TagModel extends BaseModel`,
+> `{ slug: 1 }` unique, createdAt-only timestamps to match the documented schema),
+> `server/services/tags.ts` (`listTags` / `createTag` / `deleteTag`),
+> `server/controllers/tags.ts`, `server/routes/tags.ts` (public `GET /api/tags`) +
+> `server/routes/admin/tags.ts` (`GET`/`POST`/`DELETE`, editor+). Tests:
+> `server/__tests__/{services,controllers}/tags.test.ts`.
 >
-> - `server/lib/models/Tag.ts` — `MongoLibrary.createModel<TagDoc>('Tag', {...})` with the
->   `{ slug: 1 }` unique index from `docs/data-model.md`.
-> - `TagModel extends BaseModel<TagDoc>`.
-> - `server/services/tags.ts` — `listTags()`; `createTag(name)` generates the slug via the
->   same `slugify()` in `lib/slug.ts` and returns `409 Conflict` if the slug already
->   exists (tags don't get the numeric-suffix treatment `uniqueSlug()` gives posts — a
->   duplicate tag name is a real conflict, not a naming collision to route around);
->   `deleteTag(id)` — no cascade to `posts.tags` (see the note in `docs/api-routes.md` on
->   why that's fine).
-> - `server/controllers/tags.ts`.
-> - `server/routes/tags.ts` (public `GET /api/tags`) and `server/routes/admin/tags.ts`
->   (`GET`/`POST`/`DELETE /api/admin/tags`, `requireAuth` + `requireRole('editor', 'super-admin')`).
->
-> Tests: service (mocked `TagModel`, including the 409-on-duplicate-slug path) and
-> controller (mocked service).
+> Decisions baked in:
+> - Slug generated from `name` via `slugify()`; **duplicate → `409 TAG_EXISTS`** (no
+>   auto-suffix — a duplicate tag is a real conflict), race-safe via the unique-index
+>   `E11000` catch.
+> - `deleteTag` is a plain delete, **no cascade** to `posts.tags` (a post referencing a
+>   deleted tag's slug just won't resolve; the frontend drops it — see `docs/api-routes.md`).
+> - No status/ordering/hierarchy — tags are a flat, ad-hoc label set. Public and admin
+>   `GET` share one handler (nothing to filter differently).
 
 ---
 

@@ -175,8 +175,12 @@ built via `MongoLibrary.createModel` (`CategoryModel extends BaseModel`; see
 
 **Index:** `{ slug: 1 }` unique.
 
-Mongoose model: `web/lib/models/Tag.ts` (identical copy in `server/lib/models/Tag.ts`). Referenced from `posts.tags` (array of tag slugs,
-not ObjectIds — same denormalised-slug convention as `posts.category`).
+Mongoose model: `web/lib/models/Tag.ts` — schema-equivalent `server/lib/models/Tag.ts`
+built via `MongoLibrary.createModel` (`TagModel extends BaseModel`). Slug is generated from
+`name` on create; a duplicate is a `409` conflict (not auto-suffixed). Referenced from
+`posts.tags` (array of tag slugs, not ObjectIds — same denormalised-slug convention as
+`posts.category`); deleting a tag does **not** cascade to `posts.tags` (see
+[`docs/api-routes.md`](api-routes.md)).
 
 ---
 

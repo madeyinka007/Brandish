@@ -204,11 +204,13 @@ identically in both trees, per the existing convention (see `docs/development.md
 │   │   ├── controllers/
 │   │   │   ├── auth.test.ts
 │   │   │   ├── users.test.ts
-│   │   │   └── categories.test.ts
+│   │   │   ├── categories.test.ts
+│   │   │   └── tags.test.ts
 │   │   ├── services/
 │   │   │   ├── auth.test.ts
 │   │   │   ├── users.test.ts
-│   │   │   └── categories.test.ts
+│   │   │   ├── categories.test.ts
+│   │   │   └── tags.test.ts
 │   │   ├── scripts/
 │   │   │   ├── seedSuperAdmin.test.ts
 │   │   │   └── seedCategories.test.ts
