@@ -1,0 +1,341 @@
+# Module build prompts
+
+Self-contained prompts for building each backend module, one at a time, on top of the
+Phase 1 foundation in [`server-build-phases.md`](server-build-phases.md) (Express entry
+point, Mongoose connection, `MongoLibrary`, `BaseModel`). Every module follows the layered
+architecture in [`docs/development.md`](../development.md#layered-architecture-routes--controllers--services--domain-models):
+`routes/` (wiring only) → `controllers/` (orchestration only) → `services/` (business
+logic) → domain model extending `BaseModel<T>` — **except** the four native-driver
+modules (Media, Search, Analytics, Audit log), whose services call `getDb()` directly
+instead of extending `BaseModel`, per the ODM split in
+[`docs/data-model.md`](../data-model.md#odm-strategy).
+
+Suggested build order, since some modules depend on another's model existing first:
+**Categories → Tags → Users → Authentication → Media → Posts → Comments → Newsletter →
+Search → Analytics → Audit log.** (Audit log's *write side* — `logAudit()` — is a
+dependency of Users/Posts/Comments/Categories/Media/Newsletter's services, but is listed
+last because its own admin *route* doesn't depend on anything; see its prompt for how
+that's sequenced.)
+
+---
+
+## 1. Categories
+
+> Build the Categories module. Read `docs/data-model.md`'s `categories` schema and
+> `docs/api-routes.md`'s Categories section first — categories are a **fixed set of 10**,
+> so this module has no create/delete, only list + edit `description`/`color`.
+>
+> - `server/lib/models/Category.ts` — `MongoLibrary.createModel<CategoryDoc>('Category', {...})`
+>   with the `{ slug: 1 }` unique index from `docs/data-model.md`.
+> - `server/lib/models/CategoryModel.ts` (or a class in the same file) —
+>   `class CategoryModel extends BaseModel<CategoryDoc>`. No extra methods needed —
+>   list/update are both plain `BaseModel` operations.
+> - `server/services/categories.ts` — `listCategories()`; `updateCategory(id, data)` that
+>   **whitelists** `description`/`color` from the input and silently drops anything else
+>   (`name`/`slug` must never change, even if present in the request body — don't 400 on
+>   their presence, just ignore them).
+> - `server/controllers/categories.ts` — `GET`/`PUT` orchestration per
+>   `docs/api-routes.md`.
+> - `server/routes/categories.ts` (public `GET /api/categories`) and
+>   `server/routes/admin/categories.ts` (`GET`/`PUT /api/admin/categories/:id`, both
+>   `requireAuth` + `requireRole('editor', 'super-admin')`).
+> - A one-time seed for the 10 fixed categories — there is no create route, so something
+>   has to insert them. Add `server/scripts/seedCategories.ts` (a plain script, not part
+>   of the request path) that upserts all 10 from the table in `docs/data-model.md`.
+>
+> Tests: `services/categories.ts` with a mocked `CategoryModel` (assert the
+> whitelist actually drops `name`/`slug`), and `controllers/categories.ts` with a mocked
+> service.
+
+---
+
+## 2. Tags
+
+> Build the Tags module. Read `docs/api-routes.md`'s Tags section (just added) —
+> unlike Categories, tags are **not** fixed: editors create them ad hoc, so this module
+> has create and delete.
+>
+> - `server/lib/models/Tag.ts` — `MongoLibrary.createModel<TagDoc>('Tag', {...})` with the
+>   `{ slug: 1 }` unique index from `docs/data-model.md`.
+> - `TagModel extends BaseModel<TagDoc>`.
+> - `server/services/tags.ts` — `listTags()`; `createTag(name)` generates the slug via the
+>   same `slugify()` in `lib/slug.ts` and returns `409 Conflict` if the slug already
+>   exists (tags don't get the numeric-suffix treatment `uniqueSlug()` gives posts — a
+>   duplicate tag name is a real conflict, not a naming collision to route around);
+>   `deleteTag(id)` — no cascade to `posts.tags` (see the note in `docs/api-routes.md` on
+>   why that's fine).
+> - `server/controllers/tags.ts`.
+> - `server/routes/tags.ts` (public `GET /api/tags`) and `server/routes/admin/tags.ts`
+>   (`GET`/`POST`/`DELETE /api/admin/tags`, `requireAuth` + `requireRole('editor', 'super-admin')`).
+>
+> Tests: service (mocked `TagModel`, including the 409-on-duplicate-slug path) and
+> controller (mocked service).
+
+---
+
+## 3. Users — ✅ BUILT
+
+> **Already implemented.** Reuses the `User` model built by the Authentication module
+> (`server/lib/models/User.ts` — `UserModel extends BaseModel`, `sanitizeUser()`, `ROLES`),
+> which already has the `{ email: 1 }` unique index; the model was **not** rebuilt.
+> Files: `server/services/users.ts`, `server/controllers/users.ts`,
+> `server/routes/admin/users.ts` (mounted at `/api/admin/users`, all
+> `requireAuth` + `requireRole('super-admin')`). Tests:
+> `server/__tests__/{services,controllers}/users.test.ts`.
+>
+> Decisions baked in:
+> - **`sanitizeUser` is the single projection strategy** (chosen over `select: '-passwordHash'`)
+>   — every returned user goes through it, stripping `passwordHash` *and* the reset/verify
+>   tokens. The service tests assert none of the four ever leak.
+> - `createUser` hashes via `hashPassword` (cost 10, never plaintext) and **issues the
+>   verification token + email** — this is what resolves the cross-module TODO in
+>   `docs/auth.md`.
+> - Duplicate email → `409 EMAIL_EXISTS`, caught race-free from the unique-index `E11000`.
+> - `deleteUser` is a hard delete, no cascade to `posts.authorId` (documented orphan).
+> - The `reader` role (added to `users.role` in `docs/data-model.md`) is now in the model
+>   enum + `ROLES`, so it's assignable — but its *permissions* are still undefined (flagged
+>   in `docs/auth.md`).
+>
+> **Bootstrap seed — BUILT.** `server/scripts/seedSuperAdmin.ts` (`npm run seed:admin`,
+> tested) creates the first super-admin directly with `emailVerified: true`, idempotently —
+> closing the chicken-and-egg gap (see `docs/auth.md`).
+>
+> **Known follow-up (not built):** no guard against a super-admin locking themselves out
+> (self-deactivate / self-demote) or deleting the **last** super-admin — see the summary.
+
+---
+
+## 4. Authentication — ✅ BUILT (server-side)
+
+> **Already implemented** as a self-contained Express JWT system (this replaced the
+> originally-planned NextAuth design — see the architecture note atop `docs/auth.md`). The
+> server side is done and tested: login, logout, refresh (with rotation), forgot/reset/
+> change password, verify email + resend. Files: `server/routes/auth.ts`,
+> `server/controllers/auth.ts`, `server/services/auth.ts`, `server/lib/models/User.ts`,
+> `server/lib/{jwt,password,validation,errors}.ts`, refresh-token store in
+> `server/lib/dynamo.ts`, `server/lib/ses.ts`, `server/middleware/{auth,errorHandler}.ts`,
+> `server/authorizer.ts`. Tests under `server/__tests__/{services,controllers,middleware,lib}`.
+> API docs: `docs/openapi-auth.yaml`.
+>
+> Because this module also built `server/lib/models/User.ts` (with the auth token fields
+> and `sanitizeUser()`), the **Users** module (step 3) should extend that same model rather
+> than redefine it — and on user create it must issue an `emailVerificationToken` + send the
+> verification email (the cross-module TODO flagged in `docs/auth.md`).
+>
+> **Remaining (separate, not yet built): the `web/` frontend rework.** NextAuth was removed
+> only server-side; the frontend still needs to stop using `getServerSession`/NextAuth and
+> instead call `/api/auth/*`, hold the access token, and refresh it. Prompt for that as
+> part of the (not-yet-detailed) `web/` phase, not here. When it's built:
+> - `web/lib/models/User.ts` — schema-equivalent to the server model, built directly with
+>   `InferSchemaType` (no `MongoLibrary`/`BaseModel`; those are server-only). Only needed if
+>   Next.js server components read users directly.
+> - An auth client + token storage (access token in memory; refresh token in an `httpOnly`
+>   cookie) and an access-token gate replacing the `getServerSession` gate described
+>   (as SUPERSEDED) in `docs/auth.md`.
+
+---
+
+## 5. Media
+
+> Build the Media module. Read `docs/api-routes.md`'s Media section and
+> `docs/workflows.md`'s media upload flow in full — this is **native-driver, not
+> Mongoose** (see the ODM split), and it's two services/controllers/routes, not one,
+> mirroring the existing `upload-url.ts` / `media.ts` route split and the reasons for it
+> already documented in `docs/api-routes.md`.
+>
+> - `server/services/uploadUrl.ts` — `getUploadUrl(filename, type)`: S3 presigned
+>   `PutObject` URL (60s expiry) + CloudFront CDN URL. No database access at all — this
+>   service only talks to S3.
+> - `server/controllers/uploadUrl.ts` + `server/routes/admin/upload-url.ts`.
+> - `server/services/media.ts` — native driver via `getDb()` (**no `BaseModel`, no
+>   Mongoose model** — flag this clearly if generating code, since it's the one place in
+>   this module that looks different from every Mongoose-backed module before it):
+>   - `listMedia(page, limit)`
+>   - `createFromUpload(data)` — `insertOne` with `source: 'upload'`
+>   - `createFromUrl(url)` — validate first (protocol check, private/loopback/link-local
+>     IP rejection, `HEAD` request expecting an `image/*` Content-Type — the full SSRF
+>     guard is in `docs/workflows.md`, implement it exactly, don't skip it), then
+>     `insertOne` with `source: 'url'`
+>   - `deleteMedia(id)` — delete the DB record, and if `source: 'upload'`, also delete the
+>     S3 object (the one place this service touches S3, as a side effect of owning the
+>     record's lifecycle — see `docs/api-routes.md`'s note on this)
+> - `server/controllers/media.ts` + `server/routes/admin/media.ts`.
+>
+> Tests: `uploadUrl` service (mocked S3 client), `media` service (mocked `getDb()` and
+> mocked `fetch`/DNS resolution for the SSRF guard — cover both a rejected private-IP URL
+> and a rejected non-image Content-Type, not just the happy path), both controllers
+> (mocked services).
+
+---
+
+## 6. Posts
+
+> Build the Posts module — the flagship one. Read `docs/data-model.md`'s `posts` schema
+> (including the format-conditional-fields validator) and `docs/api-routes.md`'s Posts
+> section in full. Depends on Users (embedded `author`) and Categories/Tags (denormalised
+> slugs) existing first.
+>
+> - `server/lib/models/Post.ts` — `MongoLibrary.createModel<PostDoc>('Post', {...})` with
+>   all four indexes from `docs/data-model.md` (including the new text index for search)
+>   and the `media`/`videoId` conditional validator.
+> - `PostModel extends BaseModel<PostDoc>` — no query-builder subclassing (that pattern
+>   was deliberately removed earlier in this project; use `BaseModel`'s generic
+>   `.find(filter, options)` directly from the service instead — build the filter object
+>   in the service, e.g. `{ category, status }`).
+> - `server/services/posts.ts`:
+>   - `createPost(data, author)` — generate the slug server-side via `uniqueSlug()` from
+>     `lib/slug.ts` (never trust a client-submitted slug), embed `author.{_id,name,avatar}`,
+>     validate the format-conditional fields (`422` on violation — this is the route-level
+>     check that sits *in addition to* the schema validator, per `docs/api-routes.md`)
+>   - `updatePost(id, data)` — re-validate slug uniqueness if the slug is being edited;
+>     when `status` transitions to `"published"`: set `publishedAt` if unset, call
+>     `revalidatePost()` from `lib/revalidate.ts`, and only respond after revalidation
+>     resolves (not fire-and-forget — see `docs/api-routes.md`)
+>   - `deletePost(id)` — delete + invalidate the specific CloudFront path (never `/*`)
+>   - `listPosts(filter, options)` / `getPublishedBySlug(slug)` for the public route
+> - `server/controllers/posts.ts` + `server/routes/posts.ts` (public) +
+>   `server/routes/admin/posts.ts` (`requireAuth` + `requireRole('editor', 'super-admin')`).
+> - Call `logAudit('post.publish', 'post', id, userId, {...})` (see the Audit log module)
+>   from `updatePost` on the publish transition, and from `deletePost` — these are exactly
+>   the "destructive or sensitive operations" `docs/data-model.md` says the audit log
+>   exists for. If the Audit log module isn't built yet, stub this call behind a
+>   same-signature no-op and come back to it — don't skip documenting that it's expected.
+>
+> Tests: service (mocked `PostModel` and mocked `revalidatePost`; cover the
+> format-conditional `422` for both `gallery` without `media` and `video` without
+> `videoId`) and controller (mocked service).
+
+---
+
+## 7. Comments
+
+> Build the Comments module. Read `docs/api-routes.md`'s Comments section and
+> `docs/workflows.md`'s comment moderation flow — the exact validation order there
+> (fields → reCAPTCHA → rate limit → sanitize → insert → SES alert) is not optional
+> ordering, it's what makes the reCAPTCHA/rate-limit middleware meaningful. Depends on
+> Posts (`postId` ref) and needs `server/lib/ses.ts` (still an empty scaffold file) built
+> as part of this module, since Comments is the first module that needs it.
+>
+> - `server/lib/ses.ts` — a `sendEmail(to, subject, body)` helper wrapping
+>   `@aws-sdk/client-ses`, reading `SES_FROM_EMAIL` from env.
+> - `server/lib/models/Comment.ts` + `CommentModel extends BaseModel<CommentDoc>`, with
+>   the `{ postId: 1, status: 1 }` index.
+> - `server/services/comments.ts`:
+>   - `submitComment(data, ip)` — strip HTML via `sanitize-html` (empty allowlist, plain
+>     text only), `create()` with `status: 'pending'`, then `sendEmail()` to
+>     `ADMIN_ALERT_EMAIL` with a one-click approve/reject link — a short-lived JWT
+>     (`jsonwebtoken`, 48h expiry) signed with `JWT_SECRET`, per `docs/workflows.md`
+>   - `listPending()`; `moderate(id, status)`; `deleteComment(id)` (hard delete, for
+>     confirmed spam)
+>   - the one-click moderation action handler (verifies the signed token, then calls
+>     `moderate()`) — this is invoked from the email link, not the admin panel
+> - **Note:** `submitComment` itself does *not* call reCAPTCHA/rate-limit — those are
+>   `requireRecaptcha`/`rateLimit` **middleware**, already built, that run before the
+>   controller. The service only runs once both have already passed.
+> - `server/controllers/comments.ts` + `server/routes/comments.ts` (public `GET`/`POST`,
+>   `POST` chained behind `validateRecaptcha` + `rateLimit`) +
+>   `server/routes/admin/comments.ts`.
+>
+> Tests: service (mocked `CommentModel` + mocked `sendEmail`; assert HTML is actually
+> stripped, not just passed through) and controller (mocked service).
+
+---
+
+## 8. Newsletter
+
+> Build the Newsletter module (the `subscribers` collection). Read `docs/data-model.md`'s
+> `subscribers` schema, `docs/api-routes.md`'s public newsletter routes + Subscribers
+> admin section, and `docs/workflows.md`'s newsletter send flow.
+>
+> - `server/lib/models/Subscriber.ts` + `SubscriberModel extends BaseModel<SubscriberDoc>`,
+>   with the `{ email: 1 }` unique and `{ token: 1 }` indexes.
+> - `server/services/newsletter.ts`:
+>   - `subscribe(email, categories)` — idempotent: already active+confirmed → `200` with
+>     no re-send; previously unsubscribed → reactivate and re-send confirmation.
+>     Generates `token` via `crypto.randomBytes(32).toString('hex')`.
+>   - `confirm(token)` / `unsubscribe(token)`
+>   - `listConfirmed()`; `removeSubscriber(id)` — **soft delete only**
+>     (`active: false`) — hard-deleting is explicitly on the "never do this" list in
+>     `docs/development.md`, because it allows a re-subscribe to silently skip the
+>     double-opt-in the record already proves happened once.
+>   - `sendCampaign(categoryFilter?)` — query confirmed subscribers (optionally filtered
+>     by category), fetch posts published in the last 7 days, send via
+>     `sendEmail`/`sendBulkTemplatedEmail` in batches of 50, embedding each subscriber's
+>     own unique unsubscribe link
+> - `server/controllers/newsletter.ts` + `server/routes/newsletter.ts` (public) +
+>   `server/routes/admin/subscribers.ts` (admin list/delete/send).
+>
+> Tests: service (mocked `SubscriberModel` + mocked `sendEmail`; cover both branches of
+> the idempotent `subscribe()` — already-active and previously-unsubscribed) and
+> controller (mocked service).
+
+---
+
+## 9. Search
+
+> Build the Search module. Read the `GET /api/search` note just added to
+> `docs/api-routes.md`. This service is a **hybrid** — it reads from the Mongoose `Post`
+> model (via `BaseModel`, same as the Posts module) *and* writes to the native-driver
+> `search_logs` collection (via `getDb()`) in the same request. That's not a violation of
+> "never mix ODM access patterns for one collection" (`docs/development.md`) — it's two
+> different collections, each accessed the correct way for its own ODM strategy.
+>
+> - `server/services/search.ts` — `search(query, page, limit)`:
+>   1. `PostModel.find({ $text: { $search: query }, status: 'published' }, { page, limit })`
+>      — a plain `FilterQuery`, no changes needed to `BaseModel`/`MongoLibrary` to support
+>      this, `$text` is just a Mongo query operator.
+>   2. Regardless of result count, `getDb().collection('search_logs').insertOne({ query,
+>      resultsCount, ip, createdAt: new Date() })`.
+>   3. Return the posts.
+> - `server/controllers/search.ts` + `server/routes/search.ts`.
+>
+> Tests: service (mocked `PostModel.find` and mocked `getDb()`; assert the log write
+> happens even when `resultsCount` is `0`) and controller (mocked service).
+
+---
+
+## 10. Analytics
+
+> Build the Analytics module's **read side only** — read the "Open question" callout just
+> added to `docs/api-routes.md`'s Analytics section before starting. The `analytics`
+> collection's *write* side (a batch/scheduled job aggregating `page_views` into daily
+> snapshots — almost certainly an EventBridge-scheduled Lambda, since everything else here
+> is already serverless) is undecided and not part of this prompt. Don't build a route
+> that reads from a collection nothing populates without flagging that gap explicitly if
+> you hit it.
+>
+> - `server/services/analytics.ts` — native driver via `getDb()` (no `BaseModel`):
+>   `getSnapshots({ from, to, postId, category })` — a filtered read against the
+>   `analytics` collection's documented shape.
+> - `server/controllers/analytics.ts` + `server/routes/admin/analytics.ts`
+>   (`requireAuth` + `requireRole('editor', 'super-admin')`).
+>
+> Tests: service (mocked `getDb()`) and controller (mocked service). Flag in the PR/commit
+> description that this reads from a collection with no documented writer yet.
+
+---
+
+## 11. Audit log
+
+> Build the Audit log module. Read `docs/data-model.md`'s `audit_log` schema and
+> `docs/api-routes.md`'s Audit log section — this is native-driver, read-only as a
+> **route** (`GET` only, `super-admin`-only), but its *write* helper is a dependency of
+> every other mutating module (Users, Posts, Comments, Categories, Media, Newsletter).
+>
+> - `server/lib/auditLog.ts` — `logAudit(action, targetType, targetId, userId, metadata, ip)`:
+>   a plain function (not a `BaseModel` subclass — it's a shared write-side helper other
+>   services call into, not a domain model of its own) that `insertOne`s into `audit_log`
+>   via `getDb()`.
+> - `server/services/auditLog.ts` — `listAuditLog({ targetType, targetId, userId, page, limit })`
+>   — native driver read.
+> - `server/controllers/auditLog.ts` + `server/routes/admin/audit-log.ts`
+>   (`requireRole('super-admin')` only — this log spans every role, so only the top role
+>   reads it).
+> - **Follow-up, not part of this prompt's own routes:** once `logAudit()` exists, go back
+>   to Users/Posts/Comments/Categories/Media/Newsletter's services and add the calls this
+>   project's docs already say should be there (post publish/delete, user role change,
+>   comment moderation, etc., per `docs/data-model.md`) — don't leave them as the
+>   silently-never-fulfilled TODO the Posts module prompt above flags.
+>
+> Tests: `lib/auditLog.ts` (mocked `getDb()`; assert the exact document shape written),
+> `services/auditLog.ts` (mocked `getDb()`), and the controller (mocked service).

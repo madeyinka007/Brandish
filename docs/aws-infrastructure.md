@@ -22,11 +22,12 @@ can be redeployed without touching the other.
 
 - Single Lambda function (`BlogApiFunction`) wrapping the Express app via `serverless-http`
 - A second, separate Lambda (`AdminAuthorizerFunction`, `server/authorizer.ts`) is the actual
-  API Gateway Lambda Authorizer — it only checks that a valid NextAuth session JWT is
-  present on `/api/admin/*` requests (via the `Cookie` header) before API Gateway even
-  invokes `BlogApiFunction`. Per-route minimum role (editor vs super-admin) is enforced
-  separately, inside Express, by `requireRole` — the authorizer doesn't know about roles,
-  only "is there a valid session".
+  API Gateway Lambda Authorizer — it only checks that a valid API-issued access token is
+  present on `/api/admin/*` requests (the `Authorization: Bearer <token>` header) before API
+  Gateway even invokes `BlogApiFunction`. Per-route minimum role (editor vs super-admin) is
+  enforced separately, inside Express, by `requireRole` — the authorizer doesn't know about
+  roles, only "is there a valid token". (This replaced the previous NextAuth session-cookie
+  check — auth is now API-owned; see [`docs/auth.md`](auth.md).)
 - Defined in `server/template.yaml` (AWS SAM). Both functions build via esbuild
   (`Metadata: BuildMethod: esbuild`) directly from the TypeScript source in `server/` — `sam
   build` compiles them, no separate `tsc` step in the CI pipeline.
@@ -87,7 +88,7 @@ Parameters:
     Type: AWS::SSM::Parameter::Value<String>
     Default: /blog/prod/WT_SES_FROM_EMAIL
   # ...ADMIN_ALERT_EMAIL, CLOUDFRONT_DIST_ID, S3_BUCKET_NAME, CF_DOMAIN,
-  #    DYNAMO_DEDUP_TABLE, DYNAMO_RATELIMIT_TABLE, API_BASE_URL, FRONTEND_URL
+  #    DYNAMO_DEDUP_TABLE, DYNAMO_RATELIMIT_TABLE, DYNAMO_REFRESH_TABLE, API_BASE_URL, FRONTEND_URL
 
 Resources:
   BlogApiFunction:
@@ -103,9 +104,11 @@ Resources:
           SES_FROM_EMAIL:   !Ref SesFromEmail
 ```
 
-`AdminAuthorizerFunction` needs its own `JWT_SECRET` too (it decodes the same session
-JWT Express verifies) — it must resolve the exact same SSM path as `BlogApiFunction`'s,
-or the two will disagree about what a valid session looks like.
+`AdminAuthorizerFunction` needs its own `JWT_SECRET` too (it verifies the same access
+token Express does) — it must resolve the exact same SSM path as `BlogApiFunction`'s, or
+the two will disagree about what a valid token looks like. Both also need
+`DYNAMO_REFRESH_TABLE` if they touch the refresh-token store (the API function does, for
+`/api/auth/refresh` and `/logout`).
 
 Lambda's own execution role does **not** need `ssm:GetParameters` for this mechanism —
 `{{resolve:ssm(-secure):...}}` and `AWS::SSM::Parameter::Value<...>` are both resolved by
@@ -141,6 +144,7 @@ see the note at the bottom of `server/template.yaml` for what that role needs at
 /blog/prod/CF_DOMAIN               # CloudFront domain e.g. d1abc.cloudfront.net
 /blog/prod/DYNAMO_DEDUP_TABLE      # DynamoDB table name: view_dedup
 /blog/prod/DYNAMO_RATELIMIT_TABLE  # DynamoDB table name: ratelimit
+/blog/prod/DYNAMO_REFRESH_TABLE    # DynamoDB table name: refresh_tokens (auth refresh-token store)
 /blog/prod/API_BASE_URL            # This Lambda's own public API Gateway URL — used to build
                                     # absolute links embedded in outbound emails (e.g. the
                                     # newsletter confirmation link)

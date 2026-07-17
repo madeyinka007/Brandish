@@ -1,0 +1,217 @@
+openapi: 3.1.0
+info:
+  title: Brandish API — Authentication
+  version: 1.0.0
+  description: >
+    Auth endpoints for the Brandish Express API. The API owns authentication (custom JWT +
+    rotating refresh tokens); see docs/auth.md. All error responses use the shape
+    { error, code }.
+servers:
+  - url: /api
+
+paths:
+  /auth/login:
+    post:
+      summary: Log in with email + password
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Authenticated — returns tokens and the sanitized user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResult' }
+        '400': { $ref: '#/components/responses/Error' }   # INVALID_CREDENTIALS_FORMAT
+        '401': { $ref: '#/components/responses/Error' }   # INVALID_CREDENTIALS (generic — no enumeration)
+        '403': { $ref: '#/components/responses/Error' }   # EMAIL_NOT_VERIFIED
+
+  /auth/refresh:
+    post:
+      summary: Rotate tokens — exchange a refresh token for a new pair
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          description: New access + refresh token pair (the presented refresh token is now invalid)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+        '400': { $ref: '#/components/responses/Error' }   # MISSING_REFRESH_TOKEN
+        '401': { $ref: '#/components/responses/Error' }   # INVALID_REFRESH_TOKEN
+
+  /auth/logout:
+    post:
+      summary: Revoke a refresh token
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Message' }
+
+  /auth/forgot-password:
+    post:
+      summary: Request a password-reset email (enumeration-safe — always 200)
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '200': { $ref: '#/components/responses/Message' }
+
+  /auth/reset-password:
+    post:
+      summary: Reset a password using a reset token
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token: { type: string }
+                newPassword: { type: string, minLength: 8 }
+      responses:
+        '200': { $ref: '#/components/responses/Message' }
+        '400': { $ref: '#/components/responses/Error' }   # MISSING_RESET_TOKEN / WEAK_PASSWORD / INVALID_RESET_TOKEN
+
+  /auth/change-password:
+    post:
+      summary: Change the authenticated user's password
+      tags: [auth]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string }
+                newPassword: { type: string, minLength: 8 }
+      responses:
+        '200': { $ref: '#/components/responses/Message' }
+        '400': { $ref: '#/components/responses/Error' }   # INVALID_PASSWORD_CHANGE
+        '401': { $ref: '#/components/responses/Error' }   # NO_SESSION / INVALID_TOKEN / INVALID_CURRENT_PASSWORD
+        '404': { $ref: '#/components/responses/Error' }   # USER_NOT_FOUND
+
+  /auth/verify-email:
+    post:
+      summary: Verify an email address using a verification token
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Message' }
+        '400': { $ref: '#/components/responses/Error' }   # MISSING/INVALID_VERIFICATION_TOKEN
+
+  /auth/resend-verification:
+    post:
+      summary: Re-send the verification email (enumeration-safe — always 200)
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '200': { $ref: '#/components/responses/Message' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string }
+    TokenPair:
+      type: object
+      properties:
+        accessToken: { type: string, description: JWT, 15-minute TTL }
+        refreshToken: { type: string, description: opaque, 7-day TTL, single-use }
+    PublicUser:
+      type: object
+      description: User with passwordHash and all token fields stripped (sanitizeUser)
+      properties:
+        _id: { type: string }
+        name: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [super-admin, editor, author] }
+        avatar: { type: string }
+        active: { type: boolean }
+        emailVerified: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AuthResult:
+      allOf:
+        - $ref: '#/components/schemas/TokenPair'
+        - type: object
+          properties:
+            user: { $ref: '#/components/schemas/PublicUser' }
+    ErrorResponse:
+      type: object
+      properties:
+        error: { type: string }
+        code: { type: string }
+  responses:
+    Error:
+      description: Standard error shape
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Message:
+      description: Generic success message
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: { type: string }

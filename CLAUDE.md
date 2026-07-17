@@ -34,7 +34,7 @@ with per-IP deduplication via DynamoDB TTL.
 | Secrets | AWS SSM Parameter Store | SecureString for all credentials |
 | Hosting | AWS Amplify Hosting | Serves Next.js; backed by CloudFront + S3 |
 | CI/CD | GitHub Actions | Separate jobs for frontend and API |
-| Auth | NextAuth.js | Credentials provider + optional Google OAuth |
+| Auth | Custom JWT (API-owned) | Express-issued access tokens + rotating refresh tokens (DynamoDB). Replaced NextAuth server-side; `web/` NextAuth wiring pending rework. See `docs/auth.md` |
 | Rich text | Tiptap | JSON output stored in `posts.body` |
 | Testing | Jest (`ts-jest`) | Unit tests only, in both `web/` and `server/` — DB/AWS clients are mocked, no real network calls. See `docs/development.md` |
 
@@ -112,57 +112,120 @@ identically in both trees, per the existing convention (see `docs/development.md
 │   ├── amplify.yml                 # Amplify build spec
 │   ├── jest.config.js
 │   ├── package.json
+│   ├── .gitignore
 │   └── .env.local
 │
 ├── server/                        # Express API (Lambda target) — runs and deploys independently
 │   ├── index.ts                   # Express app + serverless-http export
-│   ├── authorizer.ts              # API Gateway Lambda Authorizer — gates /api/admin/* only
-│   ├── routes/
+│   ├── authorizer.ts              # API Gateway Lambda Authorizer — verifies our Bearer access token; gates /api/admin/*
+│   ├── routes/                    # Wiring only — path + middleware + controller method, no logic
+│   │   ├── auth.ts                 # /api/auth/* — login, refresh, logout, password, verify (see docs/auth.md)
 │   │   ├── posts.ts
 │   │   ├── comments.ts 
 │   │   ├── views.ts
 │   │   ├── newsletter.ts
 │   │   ├── categories.ts
+│   │   ├── tags.ts
+│   │   ├── search.ts
 │   │   └── admin/
 │   │       ├── posts.ts
 │   │       ├── comments.ts
 │   │       ├── users.ts
 │   │       ├── subscribers.ts
 │   │       ├── categories.ts
+│   │       ├── tags.ts
 │   │       ├── media.ts
-│   │       └── upload-url.ts
+│   │       ├── upload-url.ts
+│   │       ├── search-logs.ts
+│   │       ├── analytics.ts
+│   │       └── audit-log.ts
+│   ├── controllers/                # Orchestrate one request each — call one service method, shape the response
+│   │   ├── auth.ts
+│   │   ├── posts.ts
+│   │   ├── comments.ts
+│   │   ├── users.ts
+│   │   ├── newsletter.ts
+│   │   ├── categories.ts
+│   │   ├── tags.ts
+│   │   ├── uploadUrl.ts
+│   │   ├── media.ts
+│   │   ├── search.ts
+│   │   ├── analytics.ts
+│   │   └── auditLog.ts
+│   ├── services/                   # Business logic — the only layer allowed to call domain models / getDb()
+│   │   ├── auth.ts                  # login/logout/refresh (rotation)/forgot/reset/change/verify — see docs/auth.md
+│   │   ├── posts.ts
+│   │   ├── comments.ts
+│   │   ├── users.ts
+│   │   ├── newsletter.ts
+│   │   ├── categories.ts
+│   │   ├── tags.ts
+│   │   ├── uploadUrl.ts             # S3 presigned URL only — no DB access at all
+│   │   ├── media.ts                # Native-driver — no BaseModel; calls getDb() directly (see docs/development.md)
+│   │   ├── search.ts               # Native-driver — no BaseModel; calls getDb() directly
+│   │   ├── analytics.ts            # Native-driver — no BaseModel; calls getDb() directly
+│   │   └── auditLog.ts             # Native-driver — no BaseModel; calls getDb() directly
 │   ├── middleware/
-│   │   ├── auth.ts                # JWT verification (NextAuth session)
+│   │   ├── auth.ts                # requireAuth (Bearer access-token verify) + requireRole
 │   │   ├── rateLimit.ts           # IP rate limiting via DynamoDB TTL
-│   │   └── recaptcha.ts           # reCAPTCHA v3 token validation
+│   │   ├── recaptcha.ts           # reCAPTCHA v3 token validation
+│   │   └── errorHandler.ts        # Central error middleware — AppError → { error, code }
 │   ├── lib/
 │   │   ├── mongodb.ts             # Cached MongoClient (native driver collections)
 │   │   ├── mongoose.ts            # Cached Mongoose connection (Mongoose collections)
-│   │   ├── models/                # Mongoose models — identical copy of web/lib/models/
-│   │   │   ├── User.ts
+│   │   ├── mongo.ts               # MongoLibrary — per-model wrapper, sole point of contact with Mongoose; see docs/development.md
+│   │   ├── model.ts               # BaseModel<T> — every domain model extends this; see docs/development.md
+│   │   ├── jwt.ts                 # Access-token sign/verify (jsonwebtoken)
+│   │   ├── password.ts            # bcrypt hash/compare (cost 10)
+│   │   ├── validation.ts          # Pure request-payload validators (no dependency)
+│   │   ├── errors.ts              # AppError + asyncHandler
+│   │   ├── models/                # Domain models (BaseModel subclasses via MongoLibrary.createModel); see docs/development.md
+│   │   │   ├── User.ts             # + sanitizeUser(); has auth token fields beyond the web/ copy
 │   │   │   ├── Post.ts
 │   │   │   ├── Category.ts
 │   │   │   ├── Tag.ts
 │   │   │   ├── Comment.ts
 │   │   │   └── Subscriber.ts
 │   │   ├── slug.ts                # Identical copy of web/lib/slug.ts
-│   │   ├── dynamo.ts              # DynamoDB client
+│   │   ├── dynamo.ts              # DynamoDB client + view-dedup, rate-limit, refresh-token stores
 │   │   ├── ses.ts                 # SES email helpers
-│   │   └── revalidate.ts          # S3 upload + CloudFront invalidation
+│   │   ├── revalidate.ts          # S3 upload + CloudFront invalidation
+│   │   └── auditLog.ts            # logAudit() helper (native driver) — called from services on mutating admin actions
 │   │
 │   ├── types/
 │   │   └── index.ts               # TypeScript interfaces for every collection — identical copy of web/types/index.ts
 │   │
-│   ├── __tests__/                 # Jest unit tests — mirrors routes/, middleware/, lib/; DB/AWS clients mocked
-│   │   ├── routes/
+│   ├── scripts/                    # One-off operational scripts (not part of the request path)
+│   │   └── seedSuperAdmin.ts       # Bootstrap the first super-admin — `npm run seed:admin`; see docs/auth.md
+│   │
+│   ├── __tests__/                 # Jest unit tests — mirrors routes/controllers/services/middleware/lib/scripts; DB/AWS clients mocked
+│   │   ├── controllers/
+│   │   │   ├── auth.test.ts
+│   │   │   └── users.test.ts
+│   │   ├── services/
+│   │   │   ├── auth.test.ts
+│   │   │   └── users.test.ts
+│   │   ├── scripts/
+│   │   │   └── seedSuperAdmin.test.ts
 │   │   ├── middleware/
+│   │   │   ├── auth.test.ts
+│   │   │   ├── recaptcha.test.ts
+│   │   │   └── rateLimit.test.ts
 │   │   └── lib/
-│   │       └── slug.test.ts
+│   │       ├── slug.test.ts
+│   │       ├── mongoose.test.ts
+│   │       ├── mongo.test.ts
+│   │       ├── model.test.ts
+│   │       ├── dynamo.test.ts
+│   │       ├── jwt.test.ts
+│   │       ├── password.test.ts
+│   │       └── validation.test.ts
 │   │
 │   ├── template.yaml              # AWS SAM — Lambda + API Gateway definition
 │   ├── jest.config.js
 │   ├── tsconfig.json
 │   ├── package.json
+│   ├── .gitignore
 │   ├── .env.example
 │   └── .env
 │
@@ -173,7 +236,8 @@ identically in both trees, per the existing convention (see `docs/development.md
 ├── docs/
 │   ├── data-model.md              # MongoDB + DynamoDB schemas and indexes
 │   ├── api-routes.md              # All public and admin API routes
-│   ├── auth.md                    # Authentication, roles, and middleware patterns
+│   ├── auth.md                    # Authentication (API-owned JWT), roles, and middleware patterns
+│   ├── openapi-auth.yaml          # OpenAPI 3.1 spec for the /api/auth endpoints
 │   ├── aws-infrastructure.md      # AWS services, env vars, CI/CD, cost
 │   ├── workflows.md               # Core flows: ISR, media, comments, newsletter
 │   └── development.md             # Local dev setup, conventions, slug generation
@@ -189,7 +253,8 @@ identically in both trees, per the existing convention (see `docs/development.md
 |---|---|
 | [`docs/data-model.md`](docs/data-model.md) | MongoDB collections (posts, categories, users, comments, subscribers, media), DynamoDB tables, and all indexes |
 | [`docs/api-routes.md`](docs/api-routes.md) | Public and admin API route reference |
-| [`docs/auth.md`](docs/auth.md) | Role definitions, NextAuth config, JWT middleware code |
+| [`docs/auth.md`](docs/auth.md) | Role definitions, API-owned JWT auth (access + rotating refresh tokens), auth flows, middleware |
+| [`docs/openapi-auth.yaml`](docs/openapi-auth.yaml) | OpenAPI 3.1 spec for the `/api/auth` endpoints |
 | [`docs/aws-infrastructure.md`](docs/aws-infrastructure.md) | AWS services, all environment variables, CI/CD pipeline, cost estimates |
 | [`docs/workflows.md`](docs/workflows.md) | MongoDB connection pattern, ISR revalidation, media upload, comment moderation, newsletter send |
 | [`docs/development.md`](docs/development.md) | Local dev commands, key conventions, slug generation |

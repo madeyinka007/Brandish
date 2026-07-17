@@ -267,23 +267,145 @@ await Post.create({ ...post, slug });
 
 ## Adding a new API route
 
-1. Create the handler file in `server/routes/` (or `server/routes/admin/` for protected routes)
-2. Add `requireAuth` and `requireRole(...)` middleware for protected routes
-3. Register the router in `server/index.ts`
-4. Add the route to `docs/api-routes.md`
-5. Add any new MongoDB indexes to `docs/data-model.md`
-6. Write a test in `server/__tests__/`
+1. Add whatever domain model / service method the route needs, if it doesn't exist yet
+   (see "Layered architecture" above)
+2. Create the controller method in `server/controllers/<module>.ts` — orchestration only,
+   no business logic
+3. Wire the route in `server/routes/` (or `server/routes/admin/` for protected routes) —
+   path + `requireAuth`/`requireRole(...)` + the controller method, nothing else
+4. Register the router in `server/index.ts`
+5. Add the route to `docs/api-routes.md`
+6. Add any new MongoDB indexes to `docs/data-model.md`
+7. Write tests for the controller (mocked service) and the service (mocked domain model)
+   in `server/__tests__/`
+
+## MongoLibrary — sole point of contact with Mongoose (server-only)
+
+`server/lib/mongo.ts` exports `MongoLibrary<T>`. Construct one **per model**
+(`new MongoLibrary(PostModel)`) and every Mongoose API call for that model goes through
+the instance — this is the only place in `server/` allowed to touch a Mongoose `Model`'s
+methods directly. In practice, nothing calls `MongoLibrary` directly either — `BaseModel`
+(below) wraps it, and everything else depends on `BaseModel` subclasses.
+
+- `new MongoLibrary(model)` — binds the instance to that one Mongoose model. Every
+  instance method awaits the existing cached `dbConnect()` from `lib/mongoose.ts` first
+  (not duplicated here), so callers never need to remember to connect before querying.
+- `MongoLibrary.createModel<T>(name, definition, options?, indexes?)` — the one **static**
+  exception, since schema/model *definition* has to happen before any model — and
+  therefore any `MongoLibrary` instance — exists. The only place
+  `new Schema(...)`/`mongoose.model(...)` should appear in `server/`.
+- CRUD: `.create()`, `.findById()`/`.findOne()` (optional `populate`), `.find()` (filter +
+  `sort`/`page`/`limit`/`select`/`populate` options, default `limit=20` capped at 100),
+  `.paginate()` (same as `.find()`, plus `total`/`totalPages` from a parallel `.count()`),
+  `.updateById()`/`.updateOne()`, `.deleteById()`/`.deleteOne()`, `.count()`, `.exists()`.
+- `.aggregate(pipeline)`.
+- `.populate(docs, path)` — re-populates document(s) you already have (Mongoose's
+  `Model.populate()`), distinct from the query-time `populate` option on `.find()` etc.
+
+**Trade-off this creates, on purpose:** because `createModel` builds the `Schema`
+internally, a model's document type can no longer be derived after the fact via
+`InferSchemaType<typeof schema>` — the caller passes the document interface as
+`createModel<PostDoc>(...)`'s type argument up front instead. Hand-write that interface
+(same place you'd otherwise have inferred it) rather than trying to recover
+`InferSchemaType`-style inference through the wrapper.
+
+**This is server-only.** Neither `MongoLibrary` nor `BaseModel` is duplicated to `web/` —
+`web/lib/models/*.ts` still defines schemas directly with `InferSchemaType`, same as
+before. This means, for a Mongoose-backed collection, the `web/` and `server/` model
+files are no longer literally identical the way `lib/slug.ts` or the connection helpers
+are: the document shape (fields/indexes) stays the same on both sides, but
+`server/lib/models/<Name>.ts` builds its model via `MongoLibrary.createModel(...)` while
+`web/lib/models/<Name>.ts` builds it directly. Keep the *schema definition and indexes*
+identical between the two; only the construction mechanics differ.
+
+## BaseModel — domain model base class (server-only)
+
+`server/lib/model.ts` exports the abstract `BaseModel<T>`. Its constructor takes a
+Mongoose `Model<T>` and binds a `MongoLibrary<T>` instance to it; every method
+(`create`, `find`, `findOne`, `findById`, `update`, `updateById`, `delete`, `aggregate`,
+`populate`, `paginate`, `exists`, `count`) just delegates to that instance — `BaseModel`
+itself never touches Mongoose or even knows it's there.
+
+Every domain model (`Post`, `User`, `Category`, `Comment`, ...) extends `BaseModel` and
+inherits this whole surface automatically:
+
+```ts
+class PostModel extends BaseModel<PostDoc> {
+  constructor() {
+    super(PostMongooseModel); // the compiled Model<PostDoc> from MongoLibrary.createModel
+  }
+  // add only what's specific to posts here — e.g. a findPublished() helper —
+  // not a re-implementation of anything BaseModel already provides
+}
+```
+
+**Controllers (route handlers) depend on domain model classes like `PostModel`, never on
+`MongoLibrary` or Mongoose directly.** That boundary is the whole point of this class —
+route handlers stay ignorant of the ODM entirely.
+
+Two naming choices worth calling out because they deliberately don't mirror each other:
+
+- `update(filter, data)` is filter-based (delegates to `MongoLibrary#updateOne`);
+  `updateById(id, data)` is the id-based form — both exist because both are common.
+- `delete(id)` is **id-based only** (delegates to `MongoLibrary#deleteById`) — there's no
+  filter-based `delete` on `BaseModel`, since every documented admin route deletes by id
+  (see [`docs/api-routes.md`](api-routes.md)). Call `MongoLibrary#deleteOne` directly
+  (from inside a concrete model's own subclass method) in the rare case a collection
+  genuinely needs filter-based delete.
+
+## Layered architecture: routes → controllers → services → domain models
+
+Per the architecture rules in [`docs/api-routes.md`](api-routes.md), every module follows
+this flow (native-driver collections are the one stated exception — see below):
+
+```
+routes/*.ts       — Express wiring only: path + method + middleware + controller method.
+                    No business logic, no direct model/service calls beyond invoking the
+                    controller.
+controllers/*.ts  — Orchestrates one request: reads req, calls exactly one service
+                    method, shapes the res.json(...)/status(...) response. No business
+                    logic of its own — if a controller has an if/else deciding *what* to
+                    write, that decision belongs in the service instead.
+services/*.ts     — Business logic: validation beyond basic shape-checking, calling the
+                    domain model, coordinating multiple domain models or side effects
+                    (e.g. the comments service calling both the Comment model and SES),
+                    writing audit log entries for mutating admin actions (see
+                    "Audit log" in docs/api-routes.md).
+lib/models/*.ts   — Domain models extending `BaseModel<T>` — see "BaseModel" above.
+```
+
+**Native-driver collections are the stated exception.** `media`, `page_views`,
+`analytics`, `search_logs`, `audit_log`, and `notifications` are native-driver-only (see
+the ODM split in [`docs/data-model.md`](data-model.md#odm-strategy)) — there is no
+Mongoose model for them, so there is no `BaseModel` subclass either. Their services call
+`getDb()` from `lib/mongodb.ts` and the native driver's collection methods directly. This
+is a deliberate, narrow exception to "never call the DB directly from a service," scoped
+to exactly these collections — not a general escape hatch for Mongoose-backed ones.
+
+**Validation split:** controllers only check that required fields are *present*;
+semantic validation (e.g. the format-conditional check in
+[`docs/data-model.md`](data-model.md#posts)) belongs in the service, not the controller.
+
+**Testing:** unit-test controllers with a mocked service, and services with a mocked
+domain model (or mocked `getDb()` for native-driver services) — same "unit test, not
+integration test" rule as everywhere else in this file.
 
 ## Adding a new Mongoose model
 
 1. Decide whether the collection belongs on Mongoose or the native driver — see the
    ODM split in [`docs/data-model.md`](data-model.md#odm-strategy). Only add a Mongoose
    model if the collection needs schema validation/defaults on write.
-2. Create the schema in `web/lib/models/<Name>.ts` using `InferSchemaType` for the document
-   type (no cross-project type imports — keep the file self-contained)
-3. Copy the file **identically** to `server/lib/models/<Name>.ts`
-4. Add the collection's schema, indexes, and Mongoose-model note to `docs/data-model.md`
-5. Add the corresponding TypeScript interface to `web/types/index.ts` (and its identical
+2. In `web/lib/models/<Name>.ts`: define the schema directly and use `InferSchemaType` for
+   the document type (no cross-project type imports — keep the file self-contained).
+3. In `server/lib/models/<Name>.ts`: hand-write the same document interface (see the
+   `InferSchemaType` trade-off in "MongoLibrary" above), then call
+   `MongoLibrary.createModel<NameDoc>(...)` with the same field definition and indexes as
+   step 2 — do not call `new Schema(...)`/`mongoose.model(...)` directly here.
+4. Add a `server/lib/models/<Name>Model.ts` (or a class in the same file) extending
+   `BaseModel<NameDoc>`, constructed with the compiled model from step 3 — this is what
+   route handlers actually import and use, not the raw Mongoose model.
+5. Add the collection's schema, indexes, and Mongoose-model note to `docs/data-model.md`
+6. Add the corresponding TypeScript interface to `web/types/index.ts` (and its identical
    copy at `server/types/index.ts`) if the shape is also needed outside Mongoose (e.g. in
    a Next.js server component prop)
 

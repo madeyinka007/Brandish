@@ -33,7 +33,7 @@ imports) so `web/` and `server/` stay fully independent, deployable projects.
   slug:        string,            // unique index; auto-generated from title
   body:        object,            // Tiptap JSON (rich text)
   excerpt:     string,            // shown in listing cards and OG meta
-  format:      'article' | 'gallery' | 'video' //default article
+  format:      'article' | 'gallery' | 'video', // default 'article'
   coverImage:  string,            // CloudFront URL (uploaded via S3 presigned URL)
   category:    string,            // slug — one of the 10 fixed categories below
   tags:        string[],          // array of tag slugs — ref → tags.slug; empty array = no tags
@@ -42,14 +42,52 @@ imports) so `web/` and `server/` stay fully independent, deployable projects.
     name:      string,
     avatar:    string,
   },
-  keywords:    string             //SEO keywords for dynamic seo settings
-  ogImage:     string             //og image for social sharing and others
+  media:       string[],          // CloudFront URLs — required (non-empty) when format: 'gallery'; unused otherwise
+  videoId:     string | null,     // YouTube video ID — required when format: 'video'; unused otherwise
+  keywords:    string,            // SEO keywords for dynamic seo settings
+  ogImage:     string,            // og image for social sharing and others
   status:      'draft' | 'published' | 'scheduled' | 'archived',
   viewCount:   number,            // default 0; atomically incremented via $inc
   publishedAt: Date | null,       // null until published or scheduled
   createdAt:   Date,
 }
 ```
+
+**Format-conditional fields:** `media` and `videoId` are each required for exactly one
+`format` value — `media` (non-empty) for `'gallery'`, `videoId` for `'video'`. Neither is
+used for `'article'` (the default). Because each is required only *sometimes*, a plain
+schema-level `required: true` on either field is wrong — it would reject every article
+and every non-gallery/non-video post. Enforce it with a custom validator that checks the
+sibling `format` field instead:
+
+```ts
+// server/lib/models/Post.ts (and its identical copy in web/lib/models/Post.ts)
+media: {
+  type: [String],
+  validate: {
+    validator: function (this: { format: string }, value: string[]) {
+      return this.format !== 'gallery' || (value?.length ?? 0) > 0;
+    },
+    message: 'media is required when format is "gallery"',
+  },
+},
+videoId: {
+  type: String,
+  validate: {
+    validator: function (this: { format: string }, value: string | null) {
+      return this.format !== 'video' || !!value;
+    },
+    message: 'videoId is required when format is "video"',
+  },
+},
+```
+
+This runs on every `save()`/`create()` regardless of entry point, consistent with why
+these six collections are Mongoose-backed in the first place (see the ODM strategy
+above) — it isn't a substitute for also checking this in the admin route handler and
+returning a `422` before it ever reaches Mongoose (see
+[`docs/api-routes.md`](api-routes.md)); the schema validator is the backstop, not the
+only check.
 
 **Fixed categories** (slug → display name):
 
@@ -73,6 +111,7 @@ imports) so `web/` and `server/` stay fully independent, deployable projects.
 { category: 1, status: 1, publishedAt: -1 }      // category listing pages
 { status: 1, publishedAt: -1 }                   // homepage + admin post list
 { tags: 1, status: 1, publishedAt: -1 }          // tag listing pages (multikey)
+{ title: 'text', excerpt: 'text' }               // GET /api/search (see docs/api-routes.md)
 ```
 
 Mongoose model: `web/lib/models/Post.ts` (identical copy in `server/lib/models/Post.ts`). `author` is a nested subdocument schema with
@@ -121,25 +160,38 @@ not ObjectIds — same denormalised-slug convention as `posts.category`).
 
 ```ts
 {
-  _id:          ObjectId,
-  name:         string,
-  email:        string,           // unique index
-  passwordHash: string,           // bcrypt hash — NEVER returned in API responses
-  role:         'super-admin' | 'editor' | 'author',
-  avatar:       string,           // URL
-  active:       boolean,          // false = login blocked by NextAuth on next request
-  createdAt:    Date,
+  _id:                    ObjectId,
+  name:                   string,
+  email:                  string,           // unique index
+  passwordHash:           string,           // bcrypt hash — NEVER returned in API responses
+  role:                   'super-admin' | 'editor' | 'author' | 'reader'
+  avatar:                 string,           // URL
+  active:                 boolean,          // false = login rejected (see docs/auth.md)
+  emailVerified:          boolean,          // default false; login requires true
+  emailVerificationToken: string | null,    // single-use; set on user create / resend, cleared on verify
+  passwordResetToken:     string | null,    // single-use; set on forgot-password, cleared on reset
+  passwordResetExpires:   Date | null,      // reset token expiry (1h window)
+  createdAt:              Date,
+  updatedAt:              Date,             // managed by Mongoose `timestamps: true`
 }
 ```
 
 **Index:** `{ email: 1 }` unique.
 
-> **Rule:** Always project out `passwordHash` in every query: `{ passwordHash: 0 }`.
-> It must never appear in any API response, log output, or error message.
+> **Rule:** Never return `passwordHash` — nor `emailVerificationToken`,
+> `passwordResetToken`, or `passwordResetExpires` — in any API response, log, or error.
+> The auth module's `sanitizeUser()` (`server/lib/models/User.ts`) strips all four; use it
+> on every user payload rather than trusting each call site to remember.
 
-Mongoose model: `web/lib/models/User.ts` (identical copy in `server/lib/models/User.ts`). Even though the model schema includes
-`passwordHash`, application code must still select it out of any response payload —
-Mongoose does not do this automatically.
+The `emailVerificationToken` / `passwordReset*` fields back the auth flows in
+[`docs/auth.md`](auth.md). They live on the user document (not DynamoDB) because they're
+low-churn account-lifecycle state needing a reverse lookup (token → user) — the same
+`token`-on-document convention `subscribers` uses. Refresh tokens are the opposite
+(high-churn, ephemeral) and live in DynamoDB instead — see the `refresh_tokens` table below.
+
+Mongoose model: `web/lib/models/User.ts` (schema-equivalent copy at
+`server/lib/models/User.ts`, built via `MongoLibrary.createModel` per
+[`docs/development.md`](development.md); the `server/` copy adds the auth token fields).
 
 ---
 
@@ -373,3 +425,25 @@ Tracks comment submission rate per IP. Same TTL pattern as `view_dedup`.
 
 **Rule:** Max 3 comments per IP per hour. If `count >= 3` → return `429 Too Many Requests`.
 Use `UpdateItem` with `ADD count :one` and `attribute_not_exists` to initialise atomically.
+
+---
+
+### `refresh_tokens`
+
+Backs the auth module's refresh-token rotation (see [`docs/auth.md`](auth.md)). One item
+per active refresh token; auto-expires via TTL. Ephemeral — like the two tables above,
+it's not a content store and needs no backups.
+
+| Field | Type | Key | Notes |
+|---|---|---|---|
+| `pk` | String | Partition key | Format: `refresh:{opaqueToken}` |
+| `userId` | String | — | The user the token authenticates |
+| `ttl` | Number | TTL attribute | Unix seconds: `now + 7 days` |
+
+**Rotation is a get-and-delete:** `DeleteItem` with `ReturnValues: ALL_OLD` atomically
+reads the `userId` and removes the token in one call, so a token can be redeemed at most
+once even under concurrent refreshes. On each `POST /api/auth/refresh` the presented token
+is consumed and a fresh one issued; logout deletes it unconditionally. Because TTL deletion
+is eventual (up to ~48h), the consumer re-checks the stored `ttl` and rejects an
+expired-but-not-yet-purged token rather than trusting absence alone
+(`server/lib/dynamo.ts`).
