@@ -6,6 +6,24 @@ Authorizer rejects unauthenticated requests before the Express handler runs.
 
 See [`docs/auth.md`](auth.md) for the middleware implementation.
 
+**Global Rules Before generating any endpoints, establish rules Claude must follow throughout the project:**
+Architecture rules:
+
+* Never use Mongoose directly inside controllers, services, or routes.
+* All database access must go through the existing Mongo library via the BaseModel.
+* Every domain model extends BaseModel.
+* Controllers should only orchestrate requests and responses.
+* Business logic belongs in services.
+* Validate all request payloads.
+* Return standardized API responses.
+* Use async/await.
+* Use dependency injection where appropriate.
+* Follow SOLID principles.
+* Generate production-ready TypeScript.
+* Include OpenAPI documentation where applicable.
+* Write unit tests for controllers and services.
+* Never duplicate logic already provided by BaseModel or the Mongo library.
+
 **Calling admin routes from the admin panel:** always use a relative path (e.g.
 `fetch('/api/admin/posts/:id')`), never the absolute `NEXT_PUBLIC_API_URL`. The NextAuth
 session cookie is `SameSite=Lax`, so a browser `fetch()` straight to the cross-origin API
@@ -15,6 +33,28 @@ wins first as a real filesystem route — so the browser only ever talks to its 
 and Next.js forwards the request (cookies included) to the Express API on the server side,
 where browser SameSite rules don't apply. Public (unauthenticated) routes like
 `POST /api/comments` don't have this problem and can use either form.
+
+---
+
+## Authentication routes — `/api/auth`
+
+The API owns authentication (custom JWT + rotating refresh tokens, **not** NextAuth) —
+see [`docs/auth.md`](auth.md) and [`docs/openapi-auth.yaml`](openapi-auth.yaml). All of
+these are unauthenticated except `change-password` (needs a valid access token).
+
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/login` | — | Email + password → `{ accessToken, refreshToken, user }`. Generic `401` on bad creds; `403 EMAIL_NOT_VERIFIED` if unverified. |
+| `POST` | `/api/auth/refresh` | — | Exchange a refresh token for a new pair (rotation — old token invalidated). |
+| `POST` | `/api/auth/logout` | — | Revoke the given refresh token (idempotent). |
+| `POST` | `/api/auth/forgot-password` | — | Send a reset email. Enumeration-safe — always `200`. |
+| `POST` | `/api/auth/reset-password` | — | Reset password via reset token. |
+| `POST` | `/api/auth/change-password` | Bearer | Change password (verifies current). |
+| `POST` | `/api/auth/verify-email` | — | Verify email via token (body or `?token=`). |
+| `POST` | `/api/auth/resend-verification` | — | Re-send verification email. Enumeration-safe — always `200`. |
+
+Authenticated requests send `Authorization: Bearer <accessToken>`; `requireAuth` validates
+it (`401 NO_SESSION` if absent, `401 INVALID_TOKEN` if invalid/expired).
 
 ---
 
@@ -31,6 +71,8 @@ where browser SameSite rules don't apply. Public (unauthenticated) routes like
 | `GET` | `/api/newsletter/confirm?token=` | Confirm subscription — sets `confirmedAt`, clears token |
 | `GET` | `/api/newsletter/unsubscribe?token=` | Unsubscribe — sets `active: false` |
 | `GET` | `/api/categories` | List all categories (name, slug, description, color) — for nav/filter UI |
+| `GET` | `/api/tags` | List all tags (name, slug) — for tag-cloud/filter UI |
+| `GET` | `/api/search?q=` | Search published posts by title/excerpt. Query params: `?q=&page=&limit=` |
 
 ### Notes on public routes
 
@@ -49,6 +91,13 @@ client perspective — fired after page load, not awaited.
 **`POST /api/newsletter`** — idempotent on email. If the email already exists with
 `active: true` and `confirmedAt` set, return `200` without re-sending. If previously
 unsubscribed (`active: false`), re-activate and re-send confirmation.
+
+**`GET /api/search?q=`** — matches published posts by `title`/`excerpt` (requires the
+text index noted in [`docs/data-model.md`](data-model.md#posts) — add it if it isn't
+there yet). Every request, regardless of result count, logs
+`{ query, resultsCount, ip, createdAt }` to the native-driver `search_logs` collection —
+this is what backs `/search` and the "recent searches" view in the admin analytics
+dashboard (see [`docs/data-model.md`](data-model.md)).
 
 ---
 
@@ -71,6 +120,14 @@ On `PUT` when `status` changes to `"published"`:
 2. Call `revalidatePost(post)` — uploads HTML to S3 + invalidates CloudFront
 3. Return after revalidation is confirmed (not fire-and-forget — client gets confirmation)
 
+**`POST`/`PUT`** additionally validate `format`'s conditional fields before writing —
+`format: "gallery"` requires a non-empty `media` array, `format: "video"` requires
+`videoId`. A violation returns `422` with the existing business-rule-violation shape (see
+"Error response shape" below), same category as publishing a post with no body. This is
+a route-level check in addition to — not instead of — the schema-level validator in
+[`docs/data-model.md`](data-model.md#posts), so a bad request is rejected before it ever
+reaches Mongoose.
+
 ### Categories
 
 | Method | Route | Min role | Description |
@@ -82,6 +139,21 @@ On `PUT` when `status` changes to `"published"`:
 > and `slug` are not editable via this route, and there is no create or delete route.
 > Changing a slug would orphan every existing `posts.category` value referencing it and
 > break the `[category]` route in `web/app/[category]/`.
+
+### Tags
+
+| Method | Route | Min role | Description |
+|---|---|---|---|
+| `GET` | `/api/admin/tags` | `editor` | List all tags, full detail |
+| `POST` | `/api/admin/tags` | `editor` | Create a tag — slug auto-generated from `name`, same `uniqueSlug()` convention as posts |
+| `DELETE` | `/api/admin/tags/:id` | `editor` | Delete a tag |
+
+> Unlike categories, tags aren't a fixed set — editors create them ad hoc while tagging
+> posts, so (unlike Categories above) create and delete both exist here. Deleting a tag
+> does **not** cascade to `posts.tags` — same orphan-without-cascade convention as
+> deleting a user (see Users below). A post referencing a deleted tag's slug just won't
+> resolve on a tag lookup; drop it from display rather than erroring, the same way a
+> deleted author is handled.
 
 ### Comments
 
@@ -148,6 +220,37 @@ URL-reference path.
 For `source: "url"`, the server validates the link before saving (see
 [`docs/workflows.md`](workflows.md#media-upload-flow) for the validation steps and the
 SSRF safeguards required around it) and returns `422` if it doesn't resolve to an image.
+
+### Analytics
+
+| Method | Route | Min role | Description |
+|---|---|---|---|
+| `GET` | `/api/admin/analytics` | `editor` | Aggregated snapshots. Query params: `?from=&to=&postId=&category=` |
+
+Reads from the native-driver `analytics` collection (see
+[`docs/data-model.md`](data-model.md)) — daily snapshots keyed by `(date, postId)` or
+`(date, category)`, with a site-wide row when both are `null`.
+
+> **Open question:** nothing in this project currently documents *how* `analytics`
+> documents get created — there's no scheduled/batch job in
+> [`docs/aws-infrastructure.md`](aws-infrastructure.md) aggregating `page_views` into
+> daily snapshots (only `BlogApiFunction` and `AdminAuthorizerFunction` are defined
+> there). Building this route without also deciding on that aggregation job (a scheduled
+> Lambda via EventBridge is the obvious shape, given everything else here is already
+> serverless) means the route has nothing to actually read. Resolve this before or
+> alongside implementing the route, not by assuming the collection populates itself.
+
+### Audit log
+
+| Method | Route | Min role | Description |
+|---|---|---|---|
+| `GET` | `/api/admin/audit-log` | `super-admin` | List audit entries. Query params: `?targetType=&targetId=&userId=&page=&limit=` |
+
+Read-only — there is no `POST` here. Entries are written as a side effect of other
+admin actions (post publish, user role change, comment moderation, etc., per
+[`docs/data-model.md`](data-model.md)) via a shared `logAudit()` helper called from each
+mutating service, not through this route. `super-admin`-only to view, since the log
+itself covers actions across every role.
 
 ---
 
