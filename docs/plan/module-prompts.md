@@ -19,33 +19,33 @@ that's sequenced.)
 
 ---
 
-## 1. Categories
+## 1. Categories — ✅ BUILT
 
-> Build the Categories module. Read `docs/data-model.md`'s `categories` schema and
-> `docs/api-routes.md`'s Categories section first — categories are a **fixed set of 10**,
-> so this module has no create/delete, only list + edit `description`/`color`.
+> **Already implemented** as a dynamic, editor-managed taxonomy (full CRUD + generated
+> slugs, ordering, status, SEO metadata), replacing the original fixed-set design. Files:
+> `server/lib/models/Category.ts` (`CategoryModel extends BaseModel`, `CATEGORY_STATUSES`),
+> `server/lib/slug.ts` (`slugify` — pure, collection-agnostic), `server/lib/categoryUsage.ts`
+> (delete-guard seam), `server/services/categories.ts`, `server/controllers/categories.ts`,
+> `server/routes/categories.ts` (public) + `server/routes/admin/categories.ts` (editor+),
+> `server/scripts/seedCategories.ts` (`npm run seed:categories`). Tests:
+> `server/__tests__/{services,controllers}/categories.test.ts` + `__tests__/scripts/seedCategories.test.ts`.
+> Docs reconciled: `docs/data-model.md` (`categories` + posts framing), `docs/api-routes.md`.
 >
-> - `server/lib/models/Category.ts` — `MongoLibrary.createModel<CategoryDoc>('Category', {...})`
->   with the `{ slug: 1 }` unique index from `docs/data-model.md`.
-> - `server/lib/models/CategoryModel.ts` (or a class in the same file) —
->   `class CategoryModel extends BaseModel<CategoryDoc>`. No extra methods needed —
->   list/update are both plain `BaseModel` operations.
-> - `server/services/categories.ts` — `listCategories()`; `updateCategory(id, data)` that
->   **whitelists** `description`/`color` from the input and silently drops anything else
->   (`name`/`slug` must never change, even if present in the request body — don't 400 on
->   their presence, just ignore them).
-> - `server/controllers/categories.ts` — `GET`/`PUT` orchestration per
->   `docs/api-routes.md`.
-> - `server/routes/categories.ts` (public `GET /api/categories`) and
->   `server/routes/admin/categories.ts` (`GET`/`PUT /api/admin/categories/:id`, both
->   `requireAuth` + `requireRole('editor', 'super-admin')`).
-> - A one-time seed for the 10 fixed categories — there is no create route, so something
->   has to insert them. Add `server/scripts/seedCategories.ts` (a plain script, not part
->   of the request path) that upserts all 10 from the table in `docs/data-model.md`.
+> Decisions baked in:
+> - **`posts.category` stays a denormalized slug string.** Slug is generated from `name` on
+>   create and **immutable** — `updateCategory` drops `slug` if present. Renaming `name`
+>   never touches the slug.
+> - **Delete is guarded:** `409 CATEGORY_IN_USE` if any post references the slug. Flat — no
+>   hierarchy.
+> - **Duplicate names are rejected (`409 NAME_EXISTS`), not auto-suffixed** — a resolution of
+>   a contradiction in the original prompt (a controlled taxonomy shouldn't grow
+>   `technology-2`; auto-suffixing is a posts behavior).
 >
-> Tests: `services/categories.ts` with a mocked `CategoryModel` (assert the
-> whitelist actually drops `name`/`slug`), and `controllers/categories.ts` with a mocked
-> service.
+> **⚠ Delete guard is stubbed pending the Posts module.** `server/lib/categoryUsage.ts`
+> `isCategoryInUse()` currently **throws `501 NOT_IMPLEMENTED`** — so `DELETE` on a category
+> can't complete yet. When the **Posts module** (step 6) is built, wire it to
+> `(await getPostModel()).exists({ category: slug })`. Do this as part of the Posts module;
+> until then delete fails loudly rather than risking orphaned posts.
 
 ---
 
@@ -201,9 +201,16 @@ that's sequenced.)
 >   exists for. If the Audit log module isn't built yet, stub this call behind a
 >   same-signature no-op and come back to it — don't skip documenting that it's expected.
 >
+> **Also wire up the Categories delete-guard** (deferred from the Categories module):
+> replace the stub body of `server/lib/categoryUsage.ts` `isCategoryInUse(slug)` — which
+> currently throws `501 NOT_IMPLEMENTED` — with
+> `(await getPostModel()).exists({ category: slug })`. Until this is done, deleting a
+> category fails; the Categories tests already cover both guard outcomes via a mock.
+>
 > Tests: service (mocked `PostModel` and mocked `revalidatePost`; cover the
 > format-conditional `422` for both `gallery` without `media` and `video` without
-> `videoId`) and controller (mocked service).
+> `videoId`) and controller (mocked service). Add a test that `isCategoryInUse` now
+> delegates to `PostModel.exists`.
 
 ---
 

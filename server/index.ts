@@ -4,6 +4,8 @@ import serverlessHttp from 'serverless-http';
 import { errorHandler } from './middleware/errorHandler';
 import authRouter from './routes/auth';
 import adminUsersRouter from './routes/admin/users';
+import categoriesRouter from './routes/categories';
+import adminCategoriesRouter from './routes/admin/categories';
 import dotenv from 'dotenv'
 dotenv.config()
 
@@ -20,7 +22,9 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/auth', authRouter);
+app.use('/api/categories', categoriesRouter);
 app.use('/api/admin/users', adminUsersRouter);
+app.use('/api/admin/categories', adminCategoriesRouter);
 
 // Error middleware must be registered after all routes.
 app.use(errorHandler);

@@ -13,7 +13,8 @@
     "test:coverage": "jest --coverage",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "seed:admin": "ts-node scripts/seedSuperAdmin.ts"
+    "seed:admin": "ts-node scripts/seedSuperAdmin.ts",
+    "seed:categories": "ts-node scripts/seedCategories.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cloudfront": "^3.622.0",
