@@ -117,6 +117,7 @@ identically in both trees, per the existing convention (see `docs/development.md
 │
 ├── server/                        # Express API (Lambda target) — runs and deploys independently
 │   ├── index.ts                   # Express app + serverless-http export
+│   ├── bootstrap.ts               # Lambda handler for the API fn — loadSecrets() then dynamic-imports index (secrets must precede Mongo connect-on-import)
 │   ├── authorizer.ts              # API Gateway Lambda Authorizer — verifies our Bearer access token; gates /api/admin/*
 │   ├── routes/                    # Wiring only — path + middleware + controller method, no logic
 │   │   ├── auth.ts                 # /api/auth/* — login, refresh, logout, password, verify (see docs/auth.md)
@@ -176,6 +177,7 @@ identically in both trees, per the existing convention (see `docs/development.md
 │   │   ├── mongo.ts               # MongoLibrary — per-model wrapper, sole point of contact with Mongoose; see docs/development.md
 │   │   ├── model.ts               # BaseModel<T> — every domain model extends this; see docs/development.md
 │   │   ├── jwt.ts                 # Access-token sign/verify (jsonwebtoken)
+│   │   ├── loadSecrets.ts         # Cold-start fetch of SSM SecureString secrets → process.env (CFN can't inject SecureString into Lambda env); Lambda-only, no-op locally
 │   │   ├── password.ts            # bcrypt hash/compare (cost 10)
 │   │   ├── validation.ts          # Pure request-payload validators (no dependency)
 │   │   ├── errors.ts              # AppError + asyncHandler
@@ -203,6 +205,7 @@ identically in both trees, per the existing convention (see `docs/development.md
 │   │   └── seedCategories.ts       # Seed the 10 launch categories — `npm run seed:categories`
 │   │
 │   ├── __tests__/                 # Jest unit tests — mirrors routes/controllers/services/middleware/lib/scripts; DB/AWS clients mocked
+│   │   ├── bootstrap.test.ts
 │   │   ├── controllers/
 │   │   │   ├── auth.test.ts
 │   │   │   ├── users.test.ts
@@ -229,6 +232,7 @@ identically in both trees, per the existing convention (see `docs/development.md
 │   │   └── lib/
 │   │       ├── slug.test.ts
 │   │       ├── categoryUsage.test.ts
+│   │       ├── loadSecrets.test.ts
 │   │       ├── mongoose.test.ts
 │   │       ├── mongodb.test.ts
 │   │       ├── mongo.test.ts

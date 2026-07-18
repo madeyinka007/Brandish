@@ -1,0 +1,285 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Brandish Blog CMS API. The Express app (wrapped with serverless-http) runs as a single
+  Lambda behind an API Gateway HTTP API. A second Lambda is the admin authorizer that gates
+  /api/admin/* before the API function is invoked. Also provisions the three ephemeral
+  DynamoDB tables (view dedup, comment rate limit, refresh-token rotation).
+  See docs/aws-infrastructure.md.
+
+# ---------------------------------------------------------------------------------------
+# SSM PARAMETERS THAT MUST EXIST BEFORE `sam deploy` (region us-east-1, account 584425677424)
+#
+#   SecureString — fetched at RUNTIME by the Lambdas (lib/loadSecrets.ts), NOT by the template.
+#   CloudFormation can't inject SSM SecureString into Lambda env vars, so the functions read
+#   these from ${SSM_SECRETS_PREFIX}/<NAME> with decryption at cold start. Both functions use
+#   the SAME JWT_SECRET or they disagree about what a valid token is.
+#     /brandish/prod/MONGODB_URI          Atlas srv:// connection string
+#     /brandish/prod/JWT_SECRET           access-token signing key
+#     /brandish/prod/RECAPTCHA_SECRET     Google reCAPTCHA v3 secret
+#
+#   Plain String (declared in the Parameters block below, referenced via !Ref at deploy time):
+#     /brandish/prod/SES_FROM_EMAIL       verified SES sending address
+#     /brandish/prod/ADMIN_ALERT_EMAIL    editor notification address
+#     /brandish/prod/CLOUDFRONT_DIST_ID   CloudFront distribution id (for CreateInvalidation)
+#     /brandish/prod/S3_BUCKET_NAME       media + rendered-HTML bucket
+#     /brandish/prod/CF_DOMAIN            CloudFront domain, e.g. d1abc.cloudfront.net
+#     /brandish/prod/API_BASE_URL         this API's own public URL (absolute links in emails)
+#     /brandish/prod/FRONTEND_URL         public Next.js URL (CORS origin + confirm redirect)
+#
+# NOTE: paths use /brandish/prod/ (per your setup) and DROP the legacy WT_ prefix the docs
+# showed under /blog/prod/. If your Parameter Store uses a different prefix, change
+# SSM_SECRETS_PREFIX (secrets) and the Parameters Default: values (config). The DynamoDB
+# table names are NOT read from SSM — the tables are created in this stack and wired via !Ref.
+# ---------------------------------------------------------------------------------------
+
+Parameters:
+  SesFromEmail:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /brandish/prod/SES_FROM_EMAIL
+  AdminAlertEmail:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /brandish/prod/ADMIN_ALERT_EMAIL
+  CloudFrontDistId:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /brandish/prod/CLOUDFRONT_DIST_ID
+  S3BucketName:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /brandish/prod/S3_BUCKET_NAME
+  CfDomain:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /brandish/prod/CF_DOMAIN
+  ApiBaseUrl:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /brandish/prod/API_BASE_URL
+  FrontendUrl:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /brandish/prod/FRONTEND_URL
+
+Globals:
+  Function:
+    Runtime: nodejs22.x   # nodejs20.x is past its deprecation date; 22.x is the current LTS
+    Timeout: 30            # seconds — sufficient for all current operations (docs)
+    MemorySize: 512        # MB — can drop to 256 after profiling
+    Architectures:
+      - x86_64             # all deps are pure-JS (bcryptjs, not native bcrypt); arm64 also works if you prefer Graviton pricing
+    # NOTE: the pre-created execution role is set per-function below (Role isn't a Globals key).
+
+Resources:
+  # ------------------------------------------------------------------------------------
+  # HTTP API (not REST — lower latency/cost). No DefaultAuthorizer: routes are public
+  # unless they opt into AdminAuthorizer (only /api/admin/* does, below). Uses the
+  # $default stage (no StageName) so paths have no /stage prefix: https://<id>.../api/...
+  # ------------------------------------------------------------------------------------
+  BrandishHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Auth:
+        Authorizers:
+          AdminAuthorizer:
+            FunctionArn: !GetAtt AdminAuthorizerFunction.Arn
+            # authorizer.ts returns { isAuthorized, context } — HTTP API "simple response".
+            AuthorizerPayloadFormatVersion: '2.0'
+            EnableSimpleResponses: true
+            Identity:
+              Headers:
+                - Authorization
+              ReauthorizeEvery: 0   # no caching — always re-verify (admin surface; correctness > a few extra invocations)
+
+  # ------------------------------------------------------------------------------------
+  # The Express API. One function serves every route via serverless-http; admin paths are
+  # additionally gated by the authorizer at the edge (defense-in-depth with Express's own
+  # requireAuth/requireRole). AWS_REGION is provided by the Lambda runtime — never set it.
+  # ------------------------------------------------------------------------------------
+  BlogApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      # bootstrap.handler loads the SecureString secrets from SSM at cold start, THEN imports
+      # the Express app (index.ts) — the app connects to Mongo at import time, so the secrets
+      # must be on process.env first. See bootstrap.ts / lib/loadSecrets.ts.
+      Handler: bootstrap.handler
+      # Pre-created role (not SAM-managed) — see the note at the very bottom for what it needs.
+      Role: arn:aws:iam::584425677424:role/BrandishLambdaRole
+      Environment:
+        Variables:
+          NODE_ENV: production
+          # The three secrets (MONGODB_URI, JWT_SECRET, RECAPTCHA_SECRET) are NOT set here —
+          # CloudFormation can't inject SSM SecureString into Lambda env. loadSecrets() reads
+          # them from ${SSM_SECRETS_PREFIX}/<NAME> (WithDecryption) at cold start instead.
+          SSM_SECRETS_PREFIX: /brandish/prod
+          # Plain config — via the Parameters block.
+          SES_FROM_EMAIL: !Ref SesFromEmail
+          ADMIN_ALERT_EMAIL: !Ref AdminAlertEmail
+          CLOUDFRONT_DIST_ID: !Ref CloudFrontDistId
+          S3_BUCKET_NAME: !Ref S3BucketName
+          CF_DOMAIN: !Ref CfDomain
+          API_BASE_URL: !Ref ApiBaseUrl
+          FRONTEND_URL: !Ref FrontendUrl
+          # Table names — from the tables created in this stack (!Ref returns the table name).
+          DYNAMO_DEDUP_TABLE: !Ref ViewDedupTable
+          DYNAMO_RATELIMIT_TABLE: !Ref RateLimitTable
+          DYNAMO_REFRESH_TABLE: !Ref RefreshTokensTable
+      Events:
+        # Admin routes — gated by the authorizer. More specific than /{proxy+}, so HTTP API
+        # matches these first for /api/admin/* requests.
+        Admin:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BrandishHttpApi
+            Path: /api/admin/{proxy+}
+            Method: ANY
+            Auth:
+              Authorizer: AdminAuthorizer
+        # Everything else — public (auth handled inside Express where needed).
+        Public:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BrandishHttpApi
+            Path: /{proxy+}
+            Method: ANY
+        Root:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BrandishHttpApi
+            Path: /
+            Method: ANY
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Format: cjs
+        Target: node22
+        Minify: false          # mongoose relies on runtime names in places — don't mangle
+        Sourcemap: false
+        EntryPoints:
+          - bootstrap.ts   # esbuild follows its imports and bundles index.ts + the whole app
+        External:
+          # Provided by the Node 20 Lambda runtime — don't bundle (smaller artifact).
+          - '@aws-sdk/*'
+          # mongodb's OPTIONAL native/peer deps — not installed, loaded only for features we
+          # don't use. Marking external stops esbuild erroring on their dynamic requires.
+          - 'mongodb-client-encryption'
+          - 'kerberos'
+          - 'snappy'
+          - '@mongodb-js/zstd'
+          - 'aws4'
+          - 'gcp-metadata'
+          - 'socks'
+
+  # ------------------------------------------------------------------------------------
+  # Admin authorizer (server/authorizer.ts) — verifies the Bearer access token only.
+  # Needs JWT_SECRET, and it MUST resolve the exact same SSM path as BlogApiFunction's, or
+  # the two disagree about what a valid token is.
+  # ------------------------------------------------------------------------------------
+  AdminAuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: authorizer.handler
+      Role: arn:aws:iam::584425677424:role/BrandishLambdaRole
+      Environment:
+        Variables:
+          # Same runtime-fetch as the API function — the authorizer calls loadSecrets() to pull
+          # JWT_SECRET from SSM before verifying tokens. MUST resolve the exact same value as the
+          # API function or the two disagree about what a valid token is.
+          SSM_SECRETS_PREFIX: /brandish/prod
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Format: cjs
+        Target: node22
+        Minify: true
+        Sourcemap: false
+        EntryPoints:
+          - authorizer.ts
+
+  # ------------------------------------------------------------------------------------
+  # DynamoDB — ephemeral TTL stores (docs/data-model.md). On-demand billing, no backups.
+  # Partition key `pk` (String) on all three; TTL on the `ttl` attribute (Unix seconds).
+  # ------------------------------------------------------------------------------------
+  ViewDedupTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: view_dedup
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  RateLimitTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ratelimit
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  RefreshTokensTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: refresh_tokens
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+Outputs:
+  ApiBaseUrl:
+    Description: Invoke URL of the HTTP API ($default stage). Set NEXT_PUBLIC_API_URL / API_BASE_URL to this.
+    Value: !Sub 'https://${BrandishHttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+  BlogApiFunctionName:
+    Value: !Ref BlogApiFunction
+  AdminAuthorizerFunctionName:
+    Value: !Ref AdminAuthorizerFunction
+  DynamoTables:
+    Description: Names of the three ephemeral tables created by this stack.
+    Value: !Sub '${ViewDedupTable}, ${RateLimitTable}, ${RefreshTokensTable}'
+
+# =======================================================================================
+# BrandishLambdaRole (pre-created; used by BOTH functions above) must have attached:
+#
+#   Trust policy: principal lambda.amazonaws.com (sts:AssumeRole).
+#
+#   1. CloudWatch Logs (basic execution) — logs:CreateLogGroup / CreateLogStream / PutLogEvents
+#      (equivalent to the AWSLambdaBasicExecutionRole managed policy).
+#   2. DynamoDB on the three tables (arn:aws:dynamodb:us-east-1:584425677424:table/view_dedup,
+#      /ratelimit, /refresh_tokens): GetItem, PutItem, UpdateItem, DeleteItem.
+#   3. S3 on the media bucket (arn:aws:s3:::<S3_BUCKET_NAME>/*): GetObject, PutObject,
+#      DeleteObject — the presigned upload URL inherits the signer's permission, and the
+#      revalidate helper writes/removes rendered HTML.
+#   4. CloudFront: cloudfront:CreateInvalidation on the distribution (revalidate/purge).
+#   5. SES: ses:SendEmail, ses:SendRawEmail (+ ses:SendBulkTemplatedEmail for the newsletter).
+#   6. SSM + KMS at RUNTIME (this is new — because secrets are fetched at cold start, not at
+#      deploy): ssm:GetParameters on arn:aws:ssm:us-east-1:584425677424:parameter/brandish/prod/*
+#      and kms:Decrypt on the KMS key that encrypts those SecureString parameters
+#      (alias/aws/ssm if you used the AWS-managed key, or your CMK's ARN).
+#
+#   The plain-String config (SES_FROM_EMAIL, S3_BUCKET_NAME, …) is still resolved by
+#   CloudFormation at DEPLOY time via AWS::SSM::Parameter::Value<String>, so it needs no
+#   runtime permission — only the three SecureString secrets are fetched at runtime.
+#   (The deploying principal — your CI AWS creds — also needs ssm:GetParameters at deploy
+#   time to resolve those plain-String Parameters.)
+#
+# BEFORE FIRST DEPLOY (in server/):
+#   * `npm install --save-dev esbuild`  — required by `Metadata: BuildMethod: esbuild`.
+#   * Create the SSM parameters listed at the top of this file.
+#   * `sam build && sam deploy --guided`  (guided the first time to write samconfig.toml;
+#      set region us-east-1, stack name e.g. brandish-api-prod, capabilities CAPABILITY_IAM).
+# =======================================================================================
