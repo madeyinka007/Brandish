@@ -1,4 +1,5 @@
 import { verifyAccessToken } from './lib/jwt';
+import { loadSecrets } from './lib/loadSecrets';
 
 /**
  * API Gateway (HTTP API) Lambda Authorizer — gates `/api/admin/*` before the Express
@@ -23,6 +24,9 @@ export async function handler(event: AuthorizerEvent): Promise<AuthorizerResult>
   if (!header || !header.startsWith('Bearer ')) {
     return { isAuthorized: false };
   }
+  // JWT_SECRET is fetched from SSM at runtime (not injected via the template) — must be in
+  // process.env before verifyAccessToken reads it. No-op locally / once warm.
+  await loadSecrets();
   try {
     const payload = verifyAccessToken(header.slice('Bearer '.length).trim());
     return {

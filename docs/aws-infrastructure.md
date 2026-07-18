@@ -74,47 +74,47 @@ Only the three real secrets (`MONGODB_URI`, `JWT_SECRET`, `RECAPTCHA_SECRET`) ar
 as `SecureString` (AES-256 encrypted at rest). Everything else (emails, resource IDs,
 table names, URLs) isn't a secret and is stored as plain `String`.
 
-This split matters mechanically, not just for security hygiene: CloudFormation
-`Parameters` of type `AWS::SSM::Parameter::Value<String>` **cannot read `SecureString`
-parameters at all** — there's no `<SecureString>` variant of that parameter type. So
-`server/template.yaml` uses two different resolution mechanisms:
+This split matters mechanically, and the two kinds of value reach the Lambda by **two
+different mechanisms** — the second is a correction to an earlier, non-deployable design:
+
+**Plain-String config** — resolved by CloudFormation at *deploy* time. `Parameters` of type
+`AWS::SSM::Parameter::Value<String>` read the plain params and are injected into the function
+env via `!Ref`:
 
 ```yaml
 # server/template.yaml
 Parameters:
-  # Plain String parameters — declared once here, referenced via !Ref. Covers
-  # everything except the three real secrets below.
   SesFromEmail:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /blog/prod/WT_SES_FROM_EMAIL
-  # ...ADMIN_ALERT_EMAIL, CLOUDFRONT_DIST_ID, S3_BUCKET_NAME, CF_DOMAIN,
-  #    DYNAMO_DEDUP_TABLE, DYNAMO_RATELIMIT_TABLE, DYNAMO_REFRESH_TABLE, API_BASE_URL, FRONTEND_URL
-
-Resources:
-  BlogApiFunction:
-    Properties:
-      Environment:
-        Variables:
-          # SecureString secrets — MUST use "ssm-secure", not "ssm". The plain
-          # "ssm" resolver cannot decrypt SecureString and fails at deploy time.
-          MONGODB_URI:      !Sub '{{resolve:ssm-secure:/blog/prod/WT_MONGODB_URI}}'
-          JWT_SECRET:       !Sub '{{resolve:ssm-secure:/blog/prod/WT_JWT_SECRET}}'
-          RECAPTCHA_SECRET: !Sub '{{resolve:ssm-secure:/blog/prod/WT_RECAPTCHA_SECRET}}'
-          # Plain config, via the Parameters block above
-          SES_FROM_EMAIL:   !Ref SesFromEmail
+    Default: /brandish/prod/SES_FROM_EMAIL
+  # ...ADMIN_ALERT_EMAIL, CLOUDFRONT_DIST_ID, S3_BUCKET_NAME, CF_DOMAIN, API_BASE_URL, FRONTEND_URL
 ```
 
-`AdminAuthorizerFunction` needs its own `JWT_SECRET` too (it verifies the same access
-token Express does) — it must resolve the exact same SSM path as `BlogApiFunction`'s, or
-the two will disagree about what a valid token looks like. Both also need
-`DYNAMO_REFRESH_TABLE` if they touch the refresh-token store (the API function does, for
-`/api/auth/refresh` and `/logout`).
+**The three SecureString secrets** (`MONGODB_URI`, `JWT_SECRET`, `RECAPTCHA_SECRET`) are
+fetched at *runtime*, not by the template. Two facts force this:
+1. `AWS::SSM::Parameter::Value<String>` **cannot read `SecureString` at all** (no
+   `<SecureString>` variant of that parameter type), and
+2. the `{{resolve:ssm-secure:...}}` dynamic reference **is not permitted in Lambda
+   environment variables** — it's only allowed in a small AWS-vetted allow-list of resource
+   properties, which Lambda env vars are *not* on. `sam validate --lint` rejects it (E1027).
 
-Lambda's own execution role does **not** need `ssm:GetParameters` for this mechanism —
-`{{resolve:ssm(-secure):...}}` and `AWS::SSM::Parameter::Value<...>` are both resolved by
-CloudFormation itself at deploy time, before the function ever runs. `BlogApiFunction`
-currently uses a pre-created role (`BrandishLambdaRole`) rather than a SAM-managed one —
-see the note at the bottom of `server/template.yaml` for what that role needs attached instead.
+So both functions run `loadSecrets()` (`server/lib/loadSecrets.ts`) at cold start: it calls
+SSM `GetParameters` with `WithDecryption: true` for `${SSM_SECRETS_PREFIX}/<NAME>` and sets
+them on `process.env` before anything reads them. The API function's Lambda handler is
+`bootstrap.handler` (`server/bootstrap.ts`), which loads secrets and *then* dynamically
+imports the Express app — necessary because `lib/mongoose.ts` connects to Mongo at import
+time, so `MONGODB_URI` must already be present. `AdminAuthorizerFunction` calls the same
+`loadSecrets()` before verifying tokens; it and the API function resolve the **same**
+`JWT_SECRET` value or they'd disagree about what a valid token is. Only the config vars are
+set directly in the template env; `SSM_SECRETS_PREFIX` (default `/brandish/prod`) tells
+`loadSecrets` where to look.
+
+Because secrets are now fetched at runtime, the Lambda execution role **does** need
+`ssm:GetParameters` (on `/brandish/prod/*`) and `kms:Decrypt` (on the SecureString key) —
+unlike the plain-String config, which CloudFormation still resolves at deploy time with no
+runtime permission. `BlogApiFunction` uses a pre-created role (`BrandishLambdaRole`) rather
+than a SAM-managed one — see the note at the bottom of `server/template.yaml` for the full
+list of what that role needs attached.
 
 ### DynamoDB — view dedup and rate limiting
 
@@ -130,33 +130,30 @@ see the note at the bottom of `server/template.yaml` for what that role needs at
 ### Lambda — stored in SSM Parameter Store
 
 ```
-# SecureString — real secrets, resolved via {{resolve:ssm-secure:...}}
-/blog/prod/WT_MONGODB_URI          # Atlas connection string (srv:// format)
-/blog/prod/WT_JWT_SECRET           # Must match NEXTAUTH_SECRET in Amplify — used by
-                                    # both BlogApiFunction and AdminAuthorizerFunction
-/blog/prod/WT_RECAPTCHA_SECRET     # Google reCAPTCHA v3 secret key
+# SecureString — real secrets, fetched at RUNTIME by lib/loadSecrets.ts (WithDecryption)
+/brandish/prod/MONGODB_URI          # Atlas connection string (srv:// format)
+/brandish/prod/JWT_SECRET           # Must match NEXTAUTH_SECRET in Amplify — used by
+                                     # both BlogApiFunction and AdminAuthorizerFunction
+/brandish/prod/RECAPTCHA_SECRET     # Google reCAPTCHA v3 secret key
 
-# Plain String — not secrets, resolved via CloudFormation Parameters + !Ref
-/blog/prod/WT_SES_FROM_EMAIL       # Verified SES sending address
-/blog/prod/ADMIN_ALERT_EMAIL       # Editor notification address
-/blog/prod/CLOUDFRONT_DIST_ID      # CloudFront distribution ID
-/blog/prod/S3_BUCKET_NAME          # Media upload bucket name
-/blog/prod/CF_DOMAIN               # CloudFront domain e.g. d1abc.cloudfront.net
-/blog/prod/DYNAMO_DEDUP_TABLE      # DynamoDB table name: view_dedup
-/blog/prod/DYNAMO_RATELIMIT_TABLE  # DynamoDB table name: ratelimit
-/blog/prod/DYNAMO_REFRESH_TABLE    # DynamoDB table name: refresh_tokens (auth refresh-token store)
-/blog/prod/API_BASE_URL            # This Lambda's own public API Gateway URL — used to build
-                                    # absolute links embedded in outbound emails (e.g. the
-                                    # newsletter confirmation link)
-/blog/prod/FRONTEND_URL            # Public frontend URL (same value as NEXTAUTH_URL below) —
-                                    # used to redirect GET /api/newsletter/confirm to the
-                                    # Next.js thank-you page after confirming
+# Plain String — not secrets, resolved via CloudFormation Parameters + !Ref at deploy time
+/brandish/prod/SES_FROM_EMAIL       # Verified SES sending address
+/brandish/prod/ADMIN_ALERT_EMAIL    # Editor notification address
+/brandish/prod/CLOUDFRONT_DIST_ID   # CloudFront distribution ID
+/brandish/prod/S3_BUCKET_NAME       # Media upload bucket name
+/brandish/prod/CF_DOMAIN            # CloudFront domain e.g. d1abc.cloudfront.net
+/brandish/prod/API_BASE_URL         # This Lambda's own public API Gateway URL — used to build
+                                     # absolute links embedded in outbound emails (e.g. the
+                                     # newsletter confirmation link)
+/brandish/prod/FRONTEND_URL         # Public frontend URL (same value as NEXTAUTH_URL below) —
+                                     # used to redirect GET /api/newsletter/confirm to the
+                                     # Next.js thank-you page after confirming
 ```
 
-> The `WT_` prefix on some names (but not others) isn't a security distinction — it's
-> just how these four happen to be named in Parameter Store already. Match whatever's
-> actually in SSM; `template.yaml`'s `Default:` values are the source of truth for exact
-> paths, not this list.
+> The three DynamoDB table names (`view_dedup`, `ratelimit`, `refresh_tokens`) are **not**
+> SSM params — the tables are created in `server/template.yaml` and their names wired into
+> the function env via `!Ref`. `template.yaml`'s `SSM_SECRETS_PREFIX` and the `Parameters`
+> `Default:` values are the source of truth for the exact SSM paths, not this list.
 
 ### Next.js — set in Amplify console
 
