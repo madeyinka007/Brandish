@@ -8,6 +8,8 @@ import categoriesRouter from './routes/categories';
 import adminCategoriesRouter from './routes/admin/categories';
 import tagsRouter from './routes/tags';
 import adminTagsRouter from './routes/admin/tags';
+import adminUploadUrlRouter from './routes/admin/upload-url';
+import adminMediaRouter from './routes/admin/media';
 import dotenv from 'dotenv'
 dotenv.config()
 
@@ -29,6 +31,8 @@ app.use('/api/tags', tagsRouter);
 app.use('/api/admin/users', adminUsersRouter);
 app.use('/api/admin/categories', adminCategoriesRouter);
 app.use('/api/admin/tags', adminTagsRouter);
+app.use('/api/admin/upload-url', adminUploadUrlRouter);
+app.use('/api/admin/media', adminMediaRouter);
 
 // Error middleware must be registered after all routes.
 app.use(errorHandler);

@@ -171,7 +171,7 @@ identically in both trees, per the existing convention (see `docs/development.md
 │   │   ├── recaptcha.ts           # reCAPTCHA v3 token validation
 │   │   └── errorHandler.ts        # Central error middleware — AppError → { error, code }
 │   ├── lib/
-│   │   ├── mongodb.ts             # Cached MongoClient (native driver collections)
+│   │   ├── mongodb.ts             # Cached MongoClient + getDb() (native-driver collections; dbName wt-brandish)
 │   │   ├── mongoose.ts            # Cached Mongoose connection (Mongoose collections)
 │   │   ├── mongo.ts               # MongoLibrary — per-model wrapper, sole point of contact with Mongoose; see docs/development.md
 │   │   ├── model.ts               # BaseModel<T> — every domain model extends this; see docs/development.md
@@ -188,6 +188,8 @@ identically in both trees, per the existing convention (see `docs/development.md
 │   │   │   └── Subscriber.ts
 │   │   ├── slug.ts                # slugify() — pure, collection-agnostic (uniqueSlug added by Posts module)
 │   │   ├── categoryUsage.ts       # isCategoryInUse() — Categories delete-guard seam; stubbed until Posts model exists
+│   │   ├── s3.ts                  # S3: createPresignedUpload / deleteObject / keyFromCdnUrl (media module)
+│   │   ├── imageUrl.ts            # validateImageUrl() SSRF guard — protocol + private-IP + HEAD image check
 │   │   ├── dynamo.ts              # DynamoDB client + view-dedup, rate-limit, refresh-token stores
 │   │   ├── ses.ts                 # SES email helpers
 │   │   ├── revalidate.ts          # S3 upload + CloudFront invalidation
@@ -205,12 +207,16 @@ identically in both trees, per the existing convention (see `docs/development.md
 │   │   │   ├── auth.test.ts
 │   │   │   ├── users.test.ts
 │   │   │   ├── categories.test.ts
-│   │   │   └── tags.test.ts
+│   │   │   ├── tags.test.ts
+│   │   │   ├── uploadUrl.test.ts
+│   │   │   └── media.test.ts
 │   │   ├── services/
 │   │   │   ├── auth.test.ts
 │   │   │   ├── users.test.ts
 │   │   │   ├── categories.test.ts
-│   │   │   └── tags.test.ts
+│   │   │   ├── tags.test.ts
+│   │   │   ├── uploadUrl.test.ts
+│   │   │   └── media.test.ts
 │   │   ├── scripts/
 │   │   │   ├── seedSuperAdmin.test.ts
 │   │   │   └── seedCategories.test.ts
@@ -221,9 +227,12 @@ identically in both trees, per the existing convention (see `docs/development.md
 │   │   └── lib/
 │   │       ├── slug.test.ts
 │   │       ├── mongoose.test.ts
+│   │       ├── mongodb.test.ts
 │   │       ├── mongo.test.ts
 │   │       ├── model.test.ts
 │   │       ├── dynamo.test.ts
+│   │       ├── s3.test.ts
+│   │       ├── imageUrl.test.ts
 │   │       ├── jwt.test.ts
 │   │       ├── password.test.ts
 │   │       └── validation.test.ts

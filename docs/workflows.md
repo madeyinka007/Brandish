@@ -38,11 +38,15 @@ if (process.env.NODE_ENV === 'development') {
 
 export default clientPromise;
 
-export async function getDb(dbName = 'blog') {
+export async function getDb(dbName = 'wt-brandish') {
   const c = await clientPromise;
   return c.db(dbName);
 }
 ```
+
+> The default db name **must match `lib/mongoose.ts`'s `dbName`** (`wt-brandish`) — both ODM
+> paths point at the same Atlas database, or native-driver collections (`media`, etc.) would
+> land somewhere the Mongoose collections aren't.
 
 **Why `maxPoolSize: 10`:** Atlas M0 allows 500 total connections. With multiple warm
 Lambda instances each holding a pool of 10, you have headroom for ~50 concurrent Lambda
@@ -161,6 +165,13 @@ export async function revalidatePost(post: Post) {
 The media library supports two ways to add an item — a direct file upload, or referencing
 an already-hosted image by URL. Both end with a `media` document, distinguished by
 `source` (see [`docs/data-model.md`](data-model.md) for the schema).
+
+> **Implementation note (built).** The route-inline snippets below are illustrative; the
+> actual code follows the layered architecture (routes → controllers → services). The
+> presigned-URL logic lives in `server/lib/s3.ts` + `server/services/uploadUrl.ts`; the
+> `media` CRUD in `server/services/media.ts` (native driver via `getDb()`); and the SSRF
+> guard `validateImageUrl` in `server/lib/imageUrl.ts`. The `db.collection('media')` /
+> `validateImageUrl(url)` calls shown are exactly what those files do.
 
 ### Path A — direct upload
 
