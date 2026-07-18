@@ -158,6 +158,12 @@ export async function revalidatePost(post: Post) {
 **Cost:** `CreateInvalidation` costs $0.005 per 1,000 paths — negligible at blog scale.
 **Do not** use `['/*']` — it invalidates the entire distribution and is expensive.
 
+**Delete path.** `revalidate.ts` also exports `purgePost(post)`, called from `deletePost`:
+it removes the post's cached `{category}/{slug}/index.html` from S3 and invalidates the same
+two specific paths (post page + its category listing) — never `/*`. Without it CloudFront would
+keep serving a deleted post's shell. The publish/edit path uses `revalidatePost`; both await
+before the API responds, so the client only gets `200` once the cache reflects the change.
+
 ---
 
 ## Media upload flow

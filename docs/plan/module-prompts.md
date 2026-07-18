@@ -41,11 +41,10 @@ that's sequenced.)
 >   a contradiction in the original prompt (a controlled taxonomy shouldn't grow
 >   `technology-2`; auto-suffixing is a posts behavior).
 >
-> **⚠ Delete guard is stubbed pending the Posts module.** `server/lib/categoryUsage.ts`
-> `isCategoryInUse()` currently **throws `501 NOT_IMPLEMENTED`** — so `DELETE` on a category
-> can't complete yet. When the **Posts module** (step 6) is built, wire it to
-> `(await getPostModel()).exists({ category: slug })`. Do this as part of the Posts module;
-> until then delete fails loudly rather than risking orphaned posts.
+> **✅ Delete guard wired (Posts module, step 6).** `server/lib/categoryUsage.ts`
+> `isCategoryInUse()` now delegates to `(await getPostModel()).exists({ category: slug })`,
+> replacing the earlier `501 NOT_IMPLEMENTED` stub — `DELETE` on a category now completes,
+> returning `409 CATEGORY_IN_USE` when any post still references the slug.
 
 ---
 
@@ -161,8 +160,21 @@ that's sequenced.)
 
 ---
 
-## 6. Posts
+## 6. Posts — ✅ BUILT
 
+> **Status: built.** `lib/models/Post.ts` (schema + 5 indexes incl. the `title`/`excerpt` text
+> index + `media`/`videoId` conditional validators), `lib/slug.ts` `uniqueSlug()` (Post-bound,
+> self-excluding on update), `lib/revalidate.ts` (`revalidatePost` + `purgePost` — specific
+> paths, never `/*`), `lib/auditLog.ts` (native-driver `logAudit`, best-effort), `services/posts.ts`,
+> `controllers/posts.ts`, `routes/posts.ts` + `routes/admin/posts.ts` (mounted at `/api/posts`
+> and `/api/admin/posts`). `lib/categoryUsage.ts` wired to `PostModel.exists`. Tests: posts
+> service + controller, `uniqueSlug`, `categoryUsage`. Decisions beyond the prompt, all noted in
+> code: `logAudit` is implemented for real (native driver) rather than stubbed as a no-op, since
+> `lib/auditLog.ts` is a standalone helper (the read-side audit *route* remains module 11);
+> `createPost` also revalidates + audits a post created already-`published`; editing a live post
+> re-runs `revalidatePost`; `actorId` is threaded into `updatePost`/`deletePost` (the prompt's
+> `(id, data)` sketch omitted it, but the required `logAudit(..., userId, ...)` needs it).
+>
 > Build the Posts module — the flagship one. Read `docs/data-model.md`'s `posts` schema (including the format-conditional-fields validator) and `docs/api-routes.md`'s Posts section in full. Depends on Users (embedded `author`) and Categories/Tags (denormalised slugs) existing first.
 
 > - `server/lib/models/Post.ts` — `MongoLibrary.createModel<PostDoc>('Post', {...})` with all four indexes from `docs/data-model.md` (including the new text index for search) and the `media`/`videoId` conditional validator.
@@ -176,22 +188,15 @@ validate the format-conditional fields (`422` on violation — this is the route
 check that sits *in addition to* the schema validator, per `docs/api-routes.md`) `updatePost(id, data)` — re-validate slug uniqueness if the slug is being edited;
 when `status` transitions to `"published"`: set `publishedAt` if unset, call
 `revalidatePost()` from `lib/revalidate.ts`, and only respond after revalidation resolves (not fire-and-forget — see `docs/api-routes.md`) `deletePost(id)` — delete + invalidate the specific CloudFront path (never `/*`) `listPosts(filter, options)` / `getPublishedBySlug(slug)` for the public route `server/controllers/posts.ts` + `server/routes/posts.ts` (public) + `server/routes/admin/posts.ts` (`requireAuth` + `requireRole('editor', 'super-admin')`).
-> - Call `logAudit('post.publish', 'post', id, userId, {...})` (see the Audit log module)
->   from `updatePost` on the publish transition, and from `deletePost` — these are exactly
->   the "destructive or sensitive operations" `docs/data-model.md` says the audit log
->   exists for. If the Audit log module isn't built yet, stub this call behind a
->   same-signature no-op and come back to it — don't skip documenting that it's expected.
->
+> - Call `logAudit('post.publish', 'post', id, userId, {...})` (see the Audit log module) from `updatePost` on the publish transition, and from `deletePost` — these are exactly the "destructive or sensitive operations" `docs/data-model.md` says the audit log exists for. If the Audit log module isn't built yet, stub this call behind a
+same-signature no-op and come back to it — don't skip documenting that it's expected.
+
 > **Also wire up the Categories delete-guard** (deferred from the Categories module):
-> replace the stub body of `server/lib/categoryUsage.ts` `isCategoryInUse(slug)` — which
-> currently throws `501 NOT_IMPLEMENTED` — with
-> `(await getPostModel()).exists({ category: slug })`. Until this is done, deleting a
-> category fails; the Categories tests already cover both guard outcomes via a mock.
->
-> Tests: service (mocked `PostModel` and mocked `revalidatePost`; cover the
-> format-conditional `422` for both `gallery` without `media` and `video` without
-> `videoId`) and controller (mocked service). Add a test that `isCategoryInUse` now
-> delegates to `PostModel.exists`.
+> replace the stub body of `server/lib/categoryUsage.ts` `isCategoryInUse(slug)` — which currently throws `501 NOT_IMPLEMENTED` — with `(await getPostModel()).exists({ category: slug })`. Until this is done, deleting a category fails; the Categories tests already cover both guard outcomes via a mock.
+
+Tests: service (mocked `PostModel` and mocked `revalidatePost`; cover the format-conditional `422` for both `gallery` without `media` and `video` without
+`videoId`) and controller (mocked service). Add a test that `isCategoryInUse` now
+delegates to `PostModel.exists`.
 
 ---
 

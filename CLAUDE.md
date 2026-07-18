@@ -186,8 +186,8 @@ identically in both trees, per the existing convention (see `docs/development.md
 │   │   │   ├── Tag.ts
 │   │   │   ├── Comment.ts
 │   │   │   └── Subscriber.ts
-│   │   ├── slug.ts                # slugify() — pure, collection-agnostic (uniqueSlug added by Posts module)
-│   │   ├── categoryUsage.ts       # isCategoryInUse() — Categories delete-guard seam; stubbed until Posts model exists
+│   │   ├── slug.ts                # slugify() (pure) + uniqueSlug() (Post-bound, auto-suffix; self-excluding on update)
+│   │   ├── categoryUsage.ts       # isCategoryInUse() — Categories delete-guard seam; wired to PostModel.exists
 │   │   ├── s3.ts                  # S3: createPresignedUpload / deleteObject / keyFromCdnUrl (media module)
 │   │   ├── imageUrl.ts            # validateImageUrl() SSRF guard — protocol + private-IP + HEAD image check
 │   │   ├── dynamo.ts              # DynamoDB client + view-dedup, rate-limit, refresh-token stores
@@ -208,6 +208,7 @@ identically in both trees, per the existing convention (see `docs/development.md
 │   │   │   ├── users.test.ts
 │   │   │   ├── categories.test.ts
 │   │   │   ├── tags.test.ts
+│   │   │   ├── posts.test.ts
 │   │   │   ├── uploadUrl.test.ts
 │   │   │   └── media.test.ts
 │   │   ├── services/
@@ -215,6 +216,7 @@ identically in both trees, per the existing convention (see `docs/development.md
 │   │   │   ├── users.test.ts
 │   │   │   ├── categories.test.ts
 │   │   │   ├── tags.test.ts
+│   │   │   ├── posts.test.ts
 │   │   │   ├── uploadUrl.test.ts
 │   │   │   └── media.test.ts
 │   │   ├── scripts/
@@ -226,6 +228,7 @@ identically in both trees, per the existing convention (see `docs/development.md
 │   │   │   └── rateLimit.test.ts
 │   │   └── lib/
 │   │       ├── slug.test.ts
+│   │       ├── categoryUsage.test.ts
 │   │       ├── mongoose.test.ts
 │   │       ├── mongodb.test.ts
 │   │       ├── mongo.test.ts

@@ -4,6 +4,8 @@ import serverlessHttp from 'serverless-http';
 import { errorHandler } from './middleware/errorHandler';
 import authRouter from './routes/auth';
 import adminUsersRouter from './routes/admin/users';
+import postsRouter from './routes/posts';
+import adminPostsRouter from './routes/admin/posts';
 import categoriesRouter from './routes/categories';
 import adminCategoriesRouter from './routes/admin/categories';
 import tagsRouter from './routes/tags';
@@ -26,9 +28,11 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/auth', authRouter);
+app.use('/api/posts', postsRouter);
 app.use('/api/categories', categoriesRouter);
 app.use('/api/tags', tagsRouter);
 app.use('/api/admin/users', adminUsersRouter);
+app.use('/api/admin/posts', adminPostsRouter);
 app.use('/api/admin/categories', adminCategoriesRouter);
 app.use('/api/admin/tags', adminTagsRouter);
 app.use('/api/admin/upload-url', adminUploadUrlRouter);
