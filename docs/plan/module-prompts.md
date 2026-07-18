@@ -131,66 +131,51 @@ that's sequenced.)
 
 ---
 
-## 5. Media
+## 5. Media — ✅ BUILT
 
-> Build the Media module. Read `docs/api-routes.md`'s Media section and
-> `docs/workflows.md`'s media upload flow in full — this is **native-driver, not
-> Mongoose** (see the ODM split), and it's two services/controllers/routes, not one,
-> mirroring the existing `upload-url.ts` / `media.ts` route split and the reasons for it
-> already documented in `docs/api-routes.md`.
+> **Already implemented** — the first **native-driver** module (no Mongoose model, no
+> `BaseModel`; talks to `getDb()` directly, per the ODM split). Two sub-parts, as required.
+> Files:
+> - **Native-driver infra (new, shared):** `server/lib/mongodb.ts` (cached `MongoClient` +
+>   `getDb()`, defaulting to the same `wt-brandish` DB as Mongoose — the doc's old `'blog'`
+>   default was stale and would have split collections across databases).
+> - **S3:** `server/lib/s3.ts` (`createPresignedUpload` / `deleteObject` / `keyFromCdnUrl`).
+> - **SSRF guard:** `server/lib/imageUrl.ts` (`validateImageUrl` + `isPrivateAddress`) —
+>   http(s)-only, DNS-resolve-and-reject private/loopback/link-local/CGNAT/ULA (incl.
+>   IPv4-mapped IPv6), then a `HEAD` with `redirect: 'error'`, a 5s timeout, and an
+>   `image/*` Content-Type requirement.
+> - **Upload URL:** `server/services/uploadUrl.ts` (S3 only, no DB) + controller +
+>   `server/routes/admin/upload-url.ts`.
+> - **Media CRUD:** `server/services/media.ts` (`listMedia`, `createFromUpload`,
+>   `createFromUrl`, a `createMedia` source-dispatcher, `deleteMedia` — which also removes
+>   the S3 object for `source: 'upload'`) + controller + `server/routes/admin/media.ts`.
+> Tests: `server/__tests__/lib/{imageUrl,s3,mongodb}.test.ts`,
+> `server/__tests__/{services,controllers}/{uploadUrl,media}.test.ts` — the SSRF suite
+> covers the rejected private-IP (metadata-endpoint) and non-image cases, not just the happy path.
 >
-> - `server/services/uploadUrl.ts` — `getUploadUrl(filename, type)`: S3 presigned
->   `PutObject` URL (60s expiry) + CloudFront CDN URL. No database access at all — this
->   service only talks to S3.
-> - `server/controllers/uploadUrl.ts` + `server/routes/admin/upload-url.ts`.
-> - `server/services/media.ts` — native driver via `getDb()` (**no `BaseModel`, no
->   Mongoose model** — flag this clearly if generating code, since it's the one place in
->   this module that looks different from every Mongoose-backed module before it):
->   - `listMedia(page, limit)`
->   - `createFromUpload(data)` — `insertOne` with `source: 'upload'`
->   - `createFromUrl(url)` — validate first (protocol check, private/loopback/link-local
->     IP rejection, `HEAD` request expecting an `image/*` Content-Type — the full SSRF
->     guard is in `docs/workflows.md`, implement it exactly, don't skip it), then
->     `insertOne` with `source: 'url'`
->   - `deleteMedia(id)` — delete the DB record, and if `source: 'upload'`, also delete the
->     S3 object (the one place this service touches S3, as a side effect of owning the
->     record's lifecycle — see `docs/api-routes.md`'s note on this)
-> - `server/controllers/media.ts` + `server/routes/admin/media.ts`.
->
-> Tests: `uploadUrl` service (mocked S3 client), `media` service (mocked `getDb()` and
-> mocked `fetch`/DNS resolution for the SSRF guard — cover both a rejected private-IP URL
-> and a rejected non-image Content-Type, not just the happy path), both controllers
-> (mocked services).
+> Decisions baked in beyond the prompt:
+> - `getDb()` defaults to `wt-brandish` (matches Mongoose) — fixed the stale `'blog'` in the docs.
+> - `createFromUpload` additionally checks the url is under `CF_DOMAIN` (integrity — an
+>   'upload' must be a CloudFront URL we handed out, not an arbitrary external one).
+> - Source-dispatch lives in the service (`createMedia`), keeping the controller thin.
 
 ---
 
 ## 6. Posts
 
-> Build the Posts module — the flagship one. Read `docs/data-model.md`'s `posts` schema
-> (including the format-conditional-fields validator) and `docs/api-routes.md`'s Posts
-> section in full. Depends on Users (embedded `author`) and Categories/Tags (denormalised
-> slugs) existing first.
->
-> - `server/lib/models/Post.ts` — `MongoLibrary.createModel<PostDoc>('Post', {...})` with
->   all four indexes from `docs/data-model.md` (including the new text index for search)
->   and the `media`/`videoId` conditional validator.
-> - `PostModel extends BaseModel<PostDoc>` — no query-builder subclassing (that pattern
->   was deliberately removed earlier in this project; use `BaseModel`'s generic
->   `.find(filter, options)` directly from the service instead — build the filter object
+> Build the Posts module — the flagship one. Read `docs/data-model.md`'s `posts` schema (including the format-conditional-fields validator) and `docs/api-routes.md`'s Posts section in full. Depends on Users (embedded `author`) and Categories/Tags (denormalised slugs) existing first.
+
+> - `server/lib/models/Post.ts` — `MongoLibrary.createModel<PostDoc>('Post', {...})` with all four indexes from `docs/data-model.md` (including the new text index for search) and the `media`/`videoId` conditional validator.
+> - `PostModel extends BaseModel<PostDoc>` — no query-builder subclassing (that pattern was deliberately removed earlier in this project; use `BaseModel`'s generic
+`.find(filter, options)` directly from the service instead — build the filter object
 >   in the service, e.g. `{ category, status }`).
-> - `server/services/posts.ts`:
->   - `createPost(data, author)` — generate the slug server-side via `uniqueSlug()` from
->     `lib/slug.ts` (never trust a client-submitted slug), embed `author.{_id,name,avatar}`,
->     validate the format-conditional fields (`422` on violation — this is the route-level
->     check that sits *in addition to* the schema validator, per `docs/api-routes.md`)
->   - `updatePost(id, data)` — re-validate slug uniqueness if the slug is being edited;
->     when `status` transitions to `"published"`: set `publishedAt` if unset, call
->     `revalidatePost()` from `lib/revalidate.ts`, and only respond after revalidation
->     resolves (not fire-and-forget — see `docs/api-routes.md`)
->   - `deletePost(id)` — delete + invalidate the specific CloudFront path (never `/*`)
->   - `listPosts(filter, options)` / `getPublishedBySlug(slug)` for the public route
-> - `server/controllers/posts.ts` + `server/routes/posts.ts` (public) +
->   `server/routes/admin/posts.ts` (`requireAuth` + `requireRole('editor', 'super-admin')`).
+`server/services/posts.ts`:
+`createPost(data, author)` — generate the slug server-side via `uniqueSlug()` from
+`lib/slug.ts` (never trust a client-submitted slug), embed `author.{_id,name,avatar}`,
+validate the format-conditional fields (`422` on violation — this is the route-level
+check that sits *in addition to* the schema validator, per `docs/api-routes.md`) `updatePost(id, data)` — re-validate slug uniqueness if the slug is being edited;
+when `status` transitions to `"published"`: set `publishedAt` if unset, call
+`revalidatePost()` from `lib/revalidate.ts`, and only respond after revalidation resolves (not fire-and-forget — see `docs/api-routes.md`) `deletePost(id)` — delete + invalidate the specific CloudFront path (never `/*`) `listPosts(filter, options)` / `getPublishedBySlug(slug)` for the public route `server/controllers/posts.ts` + `server/routes/posts.ts` (public) + `server/routes/admin/posts.ts` (`requireAuth` + `requireRole('editor', 'super-admin')`).
 > - Call `logAudit('post.publish', 'post', id, userId, {...})` (see the Audit log module)
 >   from `updatePost` on the publish transition, and from `deletePost` — these are exactly
 >   the "destructive or sensitive operations" `docs/data-model.md` says the audit log
