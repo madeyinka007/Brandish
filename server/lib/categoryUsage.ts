@@ -1,19 +1,15 @@
-import { AppError } from './errors';
+import { getPostModel } from './models/Post';
 
 /**
- * Whether any post references the given category slug. The Categories service's delete
- * guard depends on this to avoid orphaning `posts.category` values (which are denormalized
- * slug strings, not refs — see docs/data-model.md).
+ * Whether any post references the given category slug. The Categories service's delete guard
+ * depends on this to avoid orphaning `posts.category` values (denormalized slug strings, not
+ * refs — see docs/data-model.md).
  *
- * TODO(posts-module): implement as `(await getPostModel()).exists({ category: slug })` once
- * the Posts module (`server/lib/models/Post.ts`) exists. Until then this THROWS rather than
- * returning a value — a category delete cannot be allowed without a working guard, so we
- * fail loudly (501) instead of silently risking orphaned posts. See the Posts module prompt.
+ * Wired to the Post model as of the Posts module (this replaced the earlier 501 stub that
+ * blocked category deletes until a working guard existed). Kept in its own seam so the
+ * Categories service doesn't import the Post model directly.
  */
-export async function isCategoryInUse(_slug: string): Promise<boolean> {
-  throw new AppError(
-    501,
-    'NOT_IMPLEMENTED',
-    'Category delete-in-use guard is not wired up yet — it needs the Posts module (PostModel.exists)',
-  );
+export async function isCategoryInUse(slug: string): Promise<boolean> {
+  const model = await getPostModel();
+  return model.exists({ category: slug });
 }
