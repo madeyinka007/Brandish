@@ -75,7 +75,9 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │           ├── users/page.tsx           # Users list (Figma 23:793) — real GET /api/admin/users; filter/search/bulk, edit/activate/suspend/delete
 │   │           ├── users/new/page.tsx        # Add user (Figma 30:505) — POST /api/admin/users (name/email/role/password + invite)
 │   │           ├── users/[id]/edit/page.tsx  # Edit user — prefilled; PUT /api/admin/users/:id (name/email) + /role + /status
-│   │           └── [section]/page.tsx  # Placeholder for the remaining sections (/admin/posts, /admin/categories, …)
+│   │           ├── categories/page.tsx       # Categories list (Figma 43:519) — real GET /api/admin/categories; filter/search, hide/show/delete
+│   │           ├── categories/new/page.tsx   # Add category (Figma 44:683) — POST /api/admin/categories (name/desc/color/status/seo)
+│   │           └── [section]/page.tsx  # Placeholder for the remaining sections (/admin/posts, /admin/media, …)
 │   │   # ([category]/ and search/ public-blog pages are planned; their empty placeholder files were removed during the admin build)
 │   │
 │   ├── components/
@@ -91,12 +93,14 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │       ├── Topbar.tsx         # Search + New Post + notifications + avatar
 │   │       ├── Footer.tsx         # Dashboard footer (Figma 38:2) — copyright/version, links, system-status pill
 │   │       ├── user-ui.tsx        # Shared Users UI — role/status badges, avatars, role↔label mapping
+│   │       ├── category-ui.tsx    # Shared Categories UI — status badge, colour swatches, colour dot, client slugify
 │   │       └── icons.tsx          # Inline SVG icon set (no icon-lib dependency)
 │   │
 │   ├── lib/
 │   │   ├── api.ts                 # API base URL (NEXT_PUBLIC_API_URL) + typed fetch helper (built)
 │   │   ├── auth.ts                # Client auth — login/logout/token storage/authFetch against /api/auth (Bearer; built). Replaced the NextAuth config.
 │   │   ├── users.ts               # Users admin API client — list/get/create/update/setStatus/assignRole/delete via authFetch (built)
+│   │   ├── categories.ts          # Categories admin API client — list/create/update/delete via authFetch (built)
 │   │   ├── mongodb.ts             # Cached MongoClient for Next.js server components (public blog — planned)
 │   │   ├── mongoose.ts            # Cached Mongoose connection for Next.js server components
 │   │   ├── models/                # Mongoose models — identical copy of server/lib/models/

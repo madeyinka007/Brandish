@@ -246,3 +246,18 @@ export const Save = (p: P) => (
     <path d="M17 21v-8H7v8M7 3v5h8" />
   </Svg>
 );
+export const Star = (p: P) => (
+  <Svg {...p}>
+    <path d="M12 2 15.09 8.26 22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2Z" />
+  </Svg>
+);
+export const GripVertical = (p: P) => (
+  <Svg {...p}>
+    <circle cx="9" cy="6" r="1" />
+    <circle cx="9" cy="12" r="1" />
+    <circle cx="9" cy="18" r="1" />
+    <circle cx="15" cy="6" r="1" />
+    <circle cx="15" cy="12" r="1" />
+    <circle cx="15" cy="18" r="1" />
+  </Svg>
+);
