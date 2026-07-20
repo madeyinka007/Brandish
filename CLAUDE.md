@@ -89,6 +89,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   └── admin/                 # Admin dashboard UI (built)
 │   │       ├── Sidebar.tsx        # Dark nav (MAIN/TOOLS, active state, badges, user card, sign-out)
 │   │       ├── Topbar.tsx         # Search + New Post + notifications + avatar
+│   │       ├── Footer.tsx         # Dashboard footer (Figma 38:2) — copyright/version, links, system-status pill
 │   │       ├── user-ui.tsx        # Shared Users UI — role/status badges, avatars, role↔label mapping
 │   │       └── icons.tsx          # Inline SVG icon set (no icon-lib dependency)
 │   │
