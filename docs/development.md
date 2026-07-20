@@ -59,14 +59,20 @@ AUTH_STORE=memory            # local dev only — see below
 > behaviour (connection pooling, indexes, write concerns) differs from local MongoDB
 > and issues surface earlier when using the real cluster.
 
-> **Logging in locally without AWS.** Auth stores rotating refresh tokens in DynamoDB
-> (`server/lib/dynamo.ts`), so `POST /api/auth/login` writes to the `refresh_tokens` table —
-> without AWS credentials or that table, login fails with a **500**. For local dev set
-> **`AUTH_STORE=memory`** to keep refresh tokens in a process-local Map instead (login/refresh/
-> logout then work with no AWS). It's per-process (lost on restart) and **must stay unset in
-> production**, where real DynamoDB is used (provisioned by `server/template.yaml`). Note the
-> other DynamoDB-backed features — view-count dedup and comment rate-limiting — still need real
-> DynamoDB; only the auth token store has this local fallback.
+> **Running without AWS locally.** Two flows fail with a **500** on a machine without AWS
+> credentials, because they call AWS before returning. Both have a local opt-in fallback (set in
+> `server/.env`); **both must stay unset in production**:
+> - **`AUTH_STORE=memory`** — auth stores rotating refresh tokens in DynamoDB
+>   (`server/lib/dynamo.ts`), so `POST /api/auth/login` writes to the `refresh_tokens` table.
+>   `memory` keeps them in a process-local Map instead (login/refresh/logout work with no AWS).
+> - **`EMAIL_TRANSPORT=console`** — creating a user / password reset send a verification email
+>   via SES (`server/lib/ses.ts`), so `POST /api/admin/users` would 500. `console` logs the email
+>   instead of sending it.
+>
+> Both fallbacks are per-process (lost on restart) and dev-only; production uses real DynamoDB +
+> SES (DynamoDB tables are provisioned by `server/template.yaml`). Note the other
+> DynamoDB-backed features — view-count dedup and comment rate-limiting — still need real
+> DynamoDB; only the auth token store and email have local fallbacks.
 
 ---
 
