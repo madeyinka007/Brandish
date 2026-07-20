@@ -254,7 +254,11 @@ token** (no NextAuth). The structure:
 This client gate is **UX only** — the real security boundary is the API: the Lambda authorizer
 + `requireRole` re-check the Bearer token and role on every `/api/admin/*` request, so a forged
 or missing token fails server-side regardless of what the client renders. Admin pages fetch
-through `web/lib/auth.ts`'s `authFetch`, which attaches `Authorization: Bearer <accessToken>`.
+through `web/lib/auth.ts`'s `authFetch`, which attaches `Authorization: Bearer <accessToken>`
+and, on a `401` (the short-lived access token expired), transparently refreshes via
+`POST /api/auth/refresh` and retries once — clearing the session and letting the caller redirect
+to `/admin/login` only if the refresh itself fails. (A single shared in-flight refresh promise
+avoids concurrent 401s racing on the single-use refresh token.)
 
 ---
 

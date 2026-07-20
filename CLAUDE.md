@@ -72,7 +72,10 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │       └── (dashboard)/       # Gated route group — client auth guard lives in layout.tsx
 │   │           ├── layout.tsx     # Guard + Sidebar + Topbar shell; redirects to /admin/login when no token
 │   │           ├── page.tsx       # Dashboard /admin (Figma node 0:1) — stat cards, traffic chart, recent content, activity, quick actions
-│   │           └── [section]/page.tsx  # Placeholder for not-yet-built sections (/admin/posts, /admin/categories, /admin/users, …)
+│   │           ├── users/page.tsx           # Users list (Figma 23:793) — real GET /api/admin/users; filter/search/bulk, edit/activate/suspend/delete
+│   │           ├── users/new/page.tsx        # Add user (Figma 30:505) — POST /api/admin/users (name/email/role/password + invite)
+│   │           ├── users/[id]/edit/page.tsx  # Edit user — prefilled; PUT /api/admin/users/:id (name/email) + /role + /status
+│   │           └── [section]/page.tsx  # Placeholder for the remaining sections (/admin/posts, /admin/categories, …)
 │   │   # ([category]/ and search/ public-blog pages are planned; their empty placeholder files were removed during the admin build)
 │   │
 │   ├── components/
@@ -86,11 +89,13 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   └── admin/                 # Admin dashboard UI (built)
 │   │       ├── Sidebar.tsx        # Dark nav (MAIN/TOOLS, active state, badges, user card, sign-out)
 │   │       ├── Topbar.tsx         # Search + New Post + notifications + avatar
+│   │       ├── user-ui.tsx        # Shared Users UI — role/status badges, avatars, role↔label mapping
 │   │       └── icons.tsx          # Inline SVG icon set (no icon-lib dependency)
 │   │
 │   ├── lib/
 │   │   ├── api.ts                 # API base URL (NEXT_PUBLIC_API_URL) + typed fetch helper (built)
 │   │   ├── auth.ts                # Client auth — login/logout/token storage/authFetch against /api/auth (Bearer; built). Replaced the NextAuth config.
+│   │   ├── users.ts               # Users admin API client — list/get/create/update/setStatus/assignRole/delete via authFetch (built)
 │   │   ├── mongodb.ts             # Cached MongoClient for Next.js server components (public blog — planned)
 │   │   ├── mongoose.ts            # Cached Mongoose connection for Next.js server components
 │   │   ├── models/                # Mongoose models — identical copy of server/lib/models/

@@ -93,8 +93,12 @@ export async function logout(): Promise<void> {
   }
 }
 
-/** Authenticated fetch to the API — attaches the Bearer access token. */
-export async function authFetch(path: string, init: RequestInit = {}): Promise<Response> {
+function getRefreshToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(REFRESH_KEY);
+}
+
+function requestWithToken(path: string, init: RequestInit): Promise<Response> {
   const token = getAccessToken();
   return fetch(`${API_URL}${path}`, {
     ...init,
@@ -104,4 +108,57 @@ export async function authFetch(path: string, init: RequestInit = {}): Promise<R
       ...(init.headers ?? {}),
     },
   });
+}
+
+// Exchanges the stored refresh token for a new pair (rotation) and persists them. Shared
+// in-flight promise so several concurrent 401s trigger exactly one refresh — important
+// because refresh tokens are single-use (rotated), so parallel refreshes would clobber
+// each other. Returns false if there's no refresh token or the server rejects it.
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function doRefresh(): Promise<boolean> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return false;
+  try {
+    const res = await fetch(`${API_URL}/api/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!res.ok) return false;
+    const data = (await res.json().catch(() => ({}))) as { accessToken?: string; refreshToken?: string };
+    if (!data.accessToken || !data.refreshToken) return false;
+    localStorage.setItem(ACCESS_KEY, data.accessToken);
+    localStorage.setItem(REFRESH_KEY, data.refreshToken);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function refreshOnce(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = doRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+/**
+ * Authenticated fetch to the API. Attaches the Bearer access token; on a `401` (access token
+ * expired — it's short-lived) it transparently refreshes via `/api/auth/refresh` and retries
+ * once. Only if the refresh itself fails does it clear the session — so callers redirect to
+ * login solely on a genuinely dead session, not on a routine expiry.
+ */
+export async function authFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const res = await requestWithToken(path, init);
+  if (res.status !== 401) return res;
+
+  const refreshed = await refreshOnce();
+  if (!refreshed) {
+    clear(); // session is truly dead — presence check now returns false, so login won't bounce
+    return res;
+  }
+  return requestWithToken(path, init); // retry once with the fresh access token
 }
