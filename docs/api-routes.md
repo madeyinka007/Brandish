@@ -24,15 +24,15 @@ Architecture rules:
 * Write unit tests for controllers and services.
 * Never duplicate logic already provided by BaseModel or the Mongo library.
 
-**Calling admin routes from the admin panel:** always use a relative path (e.g.
-`fetch('/api/admin/posts/:id')`), never the absolute `NEXT_PUBLIC_API_URL`. The NextAuth
-session cookie is `SameSite=Lax`, so a browser `fetch()` straight to the cross-origin API
-Gateway URL never carries it. `next.config.js` rewrites `/api/:path*` to
-`NEXT_PUBLIC_API_URL` server-side — Next.js's own `web/app/api/auth/[...nextauth]` route still
-wins first as a real filesystem route — so the browser only ever talks to its own origin,
-and Next.js forwards the request (cookies included) to the Express API on the server side,
-where browser SameSite rules don't apply. Public (unauthenticated) routes like
-`POST /api/comments` don't have this problem and can use either form.
+**Calling admin routes from the admin UI:** the admin dashboard lives at `web/app/admin/` and
+authenticates with API-owned JWT Bearer tokens. The `web/` frontend is a **different origin**
+than the API, so admin pages call the API **directly** at `NEXT_PUBLIC_API_URL`, attaching
+`Authorization: Bearer <accessToken>` on every request (refreshing on `401` via
+`POST /api/auth/refresh`; see `web/lib/auth.ts`). No cookie is involved — there's no
+`SameSite`/cross-origin cookie problem and no Next.js rewrite/proxy is needed. The API only
+needs its CORS `FRONTEND_URL` to allow the web app's origin. (This replaced the earlier
+NextAuth session-cookie + `next.config.js` rewrite approach.) Public (unauthenticated) routes
+like `POST /api/comments` need no token.
 
 ---
 

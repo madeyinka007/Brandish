@@ -48,14 +48,25 @@ S3_BUCKET_NAME=your-dev-bucket
 CF_DOMAIN=d1abc.cloudfront.net
 DYNAMO_DEDUP_TABLE=view_dedup
 DYNAMO_RATELIMIT_TABLE=ratelimit
+DYNAMO_REFRESH_TABLE=refresh_tokens
 AWS_REGION=us-east-1
 API_BASE_URL=http://localhost:3001
 FRONTEND_URL=http://localhost:3000
+AUTH_STORE=memory            # local dev only — see below
 ```
 
 > **Use Atlas M0 for local development** — not a local mongod. Atlas connection
 > behaviour (connection pooling, indexes, write concerns) differs from local MongoDB
 > and issues surface earlier when using the real cluster.
+
+> **Logging in locally without AWS.** Auth stores rotating refresh tokens in DynamoDB
+> (`server/lib/dynamo.ts`), so `POST /api/auth/login` writes to the `refresh_tokens` table —
+> without AWS credentials or that table, login fails with a **500**. For local dev set
+> **`AUTH_STORE=memory`** to keep refresh tokens in a process-local Map instead (login/refresh/
+> logout then work with no AWS). It's per-process (lost on restart) and **must stay unset in
+> production**, where real DynamoDB is used (provisioned by `server/template.yaml`). Note the
+> other DynamoDB-backed features — view-count dedup and comment rate-limiting — still need real
+> DynamoDB; only the auth token store has this local fallback.
 
 ---
 
@@ -409,13 +420,39 @@ integration test" rule as everywhere else in this file.
    copy at `server/types/index.ts`) if the shape is also needed outside Mongoose (e.g. in
    a Next.js server component prop)
 
-## Adding a new admin panel page
+## Adding a new admin dashboard page
 
-1. Create `web/app/admin/(dashboard)/[section]/page.tsx` — **not** directly under
-   `web/app/admin/`. The `(dashboard)` route group is where the session gate
-   (`layout.tsx`) lives; it's a sibling of `web/app/admin/login/page.tsx`, which must
-   stay ungated to avoid a redirect loop. Route groups don't add a URL segment, so this
-   still serves `/admin/[section]`.
-2. Use `getServerSession` to verify role — redirect to `/admin` if insufficient
-3. Add the section to the sidebar nav in `web/app/admin/(dashboard)/layout.tsx`
-4. Add the corresponding admin API route (see above)
+The admin dashboard lives at **`web/app/admin/`** (a route group inside the `web/` Next.js
+app). `login/page.tsx` and the gated `(dashboard)/` group already exist; new sections currently
+render via a generic `(dashboard)/[section]/page.tsx` placeholder until built out.
+
+1. Create `web/app/admin/(dashboard)/<section>/page.tsx` (replacing what the `[section]`
+   placeholder currently serves). The `(dashboard)` route group holds the auth guard
+   (`layout.tsx`) and is a sibling of `web/app/admin/login/page.tsx`, which stays ungated to
+   avoid a redirect loop. Route groups add no URL segment, so this serves `/admin/<section>`.
+2. The guard is already in `(dashboard)/layout.tsx` — a client-side check on the API access
+   token (`web/lib/auth.ts`) that redirects to `/admin/login` when absent. UX only: the API
+   (Lambda authorizer + `requireRole`) re-checks the token/role on every `/api/admin/*` call.
+3. Fetch through `web/lib/auth.ts`'s `authFetch`, which attaches `Authorization: Bearer
+   <accessToken>`.
+4. Add the section to the sidebar nav in `web/components/admin/Sidebar.tsx`.
+5. Add the corresponding admin API route in `server/` (see above).
+
+## Admin UI from Figma
+
+The admin UI is designed in Figma; the login (`web/app/admin/login`) and dashboard
+(`web/app/admin/(dashboard)`) were built from it. To bring further frames into code, prefer —
+in order:
+
+1. **Figma MCP server → code, in this editor.** This repo's tooling has the Figma MCP server
+   available. `get_screenshot` renders any frame by `node-id` + `fileKey` from a share link;
+   `get_design_context` returns richer reference code + tokens **but requires the frame to be
+   selected in the Figma desktop app** (it errors with "nothing selected" otherwise). Build one
+   frame at a time into `web/app/admin/` + `web/components/admin/`, then wire it to the API.
+2. **Figma Make / “Get code” export** for a first-pass scaffold, then refactor into the
+   component structure above (shared pieces into `web/components/admin/`, mock data → `/api/*`).
+3. **Manual rebuild from the design spec** (measurements/tokens off Dev Mode) for simple pages.
+
+Whichever path: (a) build the design as presentational components first, then connect data;
+(b) never trust the client for authorization — the API re-checks every `/api/admin/*` call;
+(c) styling uses Tailwind CSS v4 with the design tokens in `web/app/globals.css`.

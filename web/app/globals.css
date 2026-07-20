@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* Design tokens from the Figma admin dashboard. Tailwind v4 auto-generates utilities
+   (bg-sidebar, text-brand, …) from these @theme entries. */
+@theme {
+  --color-brand: #4f46e5; /* indigo-600 — primary */
+  --color-brand-dark: #4338ca;
+  --color-brand-soft: #eef2ff; /* indigo-50 tint for icon chips */
+  --color-sidebar: #17172b; /* dark navy sidebar / login left panel */
+  --color-sidebar-accent: #23233d;
+  --color-canvas: #f6f7f9; /* app background */
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-canvas);
+  color: #0f172a; /* slate-900 */
+  -webkit-font-smoothing: antialiased;
+}
