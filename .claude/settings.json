@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(node_modules/.bin/tsc --noEmit)",
-      "Bash(node_modules/.bin/jest)"
+      "Bash(node_modules/.bin/jest)",
+      "mcp__claude_ai_Figma__get_screenshot",
+      "mcp__claude_ai_Figma__get_design_context"
     ]
   }
 }

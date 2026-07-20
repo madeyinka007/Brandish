@@ -1,7 +1,12 @@
+// Pin these before importing dynamo.ts (which calls dotenv.config() at load). dotenv won't
+// override already-set vars, so this keeps the module in DynamoDB mode regardless of what the
+// local .env holds (it may set AUTH_STORE=memory for dev). The memory-mode block below opts in
+// explicitly via resetModules.
 process.env.AWS_REGION = 'us-east-1';
 process.env.DYNAMO_DEDUP_TABLE = 'test_view_dedup';
 process.env.DYNAMO_RATELIMIT_TABLE = 'test_ratelimit';
 process.env.DYNAMO_REFRESH_TABLE = 'test_refresh';
+process.env.AUTH_STORE = 'dynamo';
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
@@ -132,5 +137,50 @@ describe('refresh-token store', () => {
     expect(command.input.TableName).toBe('test_refresh');
     expect(command.input.Key.pk.S).toBe('refresh:tok');
     expect(command.input.ReturnValues).toBeUndefined();
+  });
+});
+
+describe('refresh-token store — in-memory fallback (AUTH_STORE=memory)', () => {
+  // Re-import the module with AUTH_STORE=memory so it selects the in-process Map path. If the
+  // fallback were NOT taken, these calls would hit a real DynamoDBClient (no creds) and reject —
+  // so the fact they resolve is itself proof the memory branch is used, with zero AWS I/O.
+  function loadMemoryStore(): typeof import('../../lib/dynamo') {
+    jest.resetModules();
+    const prev = process.env.AUTH_STORE;
+    process.env.AUTH_STORE = 'memory';
+    jest.spyOn(console, 'warn').mockImplementation(() => {}); // silence the load-time notice
+    const mod = require('../../lib/dynamo') as typeof import('../../lib/dynamo');
+    process.env.AUTH_STORE = prev;
+    return mod;
+  }
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.resetModules();
+  });
+
+  test('store → consume returns the userId, and a second consume is null (rotation)', async () => {
+    const store = loadMemoryStore();
+    await store.storeRefreshToken('tok', 'user1', 3600);
+    await expect(store.consumeRefreshToken('tok')).resolves.toBe('user1');
+    await expect(store.consumeRefreshToken('tok')).resolves.toBeNull();
+  });
+
+  test('consume returns null for an unknown token', async () => {
+    const store = loadMemoryStore();
+    await expect(store.consumeRefreshToken('nope')).resolves.toBeNull();
+  });
+
+  test('consume returns null for an expired token', async () => {
+    const store = loadMemoryStore();
+    await store.storeRefreshToken('old', 'user1', -1); // already expired
+    await expect(store.consumeRefreshToken('old')).resolves.toBeNull();
+  });
+
+  test('revoke removes the token (subsequent consume is null)', async () => {
+    const store = loadMemoryStore();
+    await store.storeRefreshToken('tok2', 'user2', 3600);
+    await store.revokeRefreshToken('tok2');
+    await expect(store.consumeRefreshToken('tok2')).resolves.toBeNull();
   });
 });

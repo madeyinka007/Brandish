@@ -6,10 +6,9 @@
 > **refresh tokens** (opaque, 7 days, stored in DynamoDB). The `role` claim is embedded in
 > the access token so every request enforces permissions without a database lookup.
 >
-> The `web/` NextAuth wiring described further down (the `getServerSession` gate, the
-> `[...nextauth]` route) is now **superseded** and pending a separate frontend rework —
-> the frontend should call these API endpoints and store the returned tokens. That rework
-> was explicitly out of scope for the auth-module build and is flagged inline below.
+> The frontend consumes these endpoints directly: the admin UI (`web/app/admin/`) calls
+> `/api/auth/login`, stores the returned tokens client-side, and gates `/admin` on the access
+> token (see "Protecting Next.js admin pages" below). NextAuth is no longer used.
 
 Clients send the access token as `Authorization: Bearer <token>` on every request;
 `requireAuth` verifies it. When it expires, `POST /api/auth/refresh` exchanges a valid
@@ -238,20 +237,24 @@ pattern that `checkRateLimit` wraps.
 
 ---
 
-## Protecting Next.js admin pages (SUPERSEDED — pending frontend rework)
+## Protecting Next.js admin pages
 
-> The `getServerSession`-based gate below belongs to the NextAuth design this module
-> replaced. It is **not** how the frontend should gate `/admin` anymore — the reworked
-> frontend should hold the API-issued access token (e.g. in memory + refresh token in an
-> `httpOnly` cookie) and redirect to `/admin/login` when it's absent/expired, driving the
-> `/api/auth/*` endpoints. This section is retained only to document what needs replacing;
-> the frontend rework was out of scope for the auth-module build.
+The admin UI lives in `web/app/admin/` and gates itself against the **API-issued access
+token** (no NextAuth). The structure:
 
-The route-group structure it describes is still valid and worth preserving: gated pages
-live under `web/app/admin/(dashboard)/` (with the gate in that group's `layout.tsx`), while
-`web/app/admin/login/page.tsx` stays a sibling *outside* the group so the login page itself
-isn't gated (which would cause a redirect loop). Only the *mechanism* inside the gate
-(`getServerSession(authOptions)`) changes — swap it for an access-token check.
+- `web/app/admin/login/page.tsx` — the sign-in page; stays *outside* the gated route group so
+  it isn't itself gated (which would cause a redirect loop). It calls `POST /api/auth/login`
+  via `web/lib/auth.ts`, stores the returned `{ accessToken, refreshToken, user }`, and
+  redirects to `/admin`.
+- `web/app/admin/(dashboard)/layout.tsx` — the gate. A **client-side** check: if there's no
+  stored access token it `router.replace('/admin/login')`, otherwise it renders the dashboard
+  shell (sidebar + topbar + page). The `(dashboard)` route group adds no URL segment, so pages
+  still serve at `/admin`, `/admin/posts`, etc.
+
+This client gate is **UX only** — the real security boundary is the API: the Lambda authorizer
++ `requireRole` re-check the Bearer token and role on every `/api/admin/*` request, so a forged
+or missing token fails server-side regardless of what the client renders. Admin pages fetch
+through `web/lib/auth.ts`'s `authFetch`, which attaches `Authorization: Bearer <accessToken>`.
 
 ---
 

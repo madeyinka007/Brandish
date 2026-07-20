@@ -9,14 +9,23 @@ can be redeployed without touching the other.
 
 ### Amplify Hosting — Next.js frontend
 
-- Connected to the `main` branch on GitHub
-- Auto-deploys on every push — no manual trigger needed
-- `web/amplify.yml`'s `preBuild` phase runs `npm test` before `npm run build` — a failing
-  Jest suite fails the Amplify build, same gate as `deploy-api.yml` running `npm test`
-  before `sam deploy` (see CI/CD below)
-- Environment variables set in the Amplify console (not in code or `.env` files)
-- Backed by CloudFront + S3 under the hood
-- `NEXT_PUBLIC_API_URL` must point to the API Gateway invoke URL
+A single **Amplify app** (app root `web/`) serves both the public blog and the admin dashboard
+at `/admin`. It's connected to the `main` branch and auto-deploys on every push — no manual
+trigger needed.
+
+- `web/amplify.yml`'s `preBuild` runs `npm test` before `npm run build` — a failing check fails
+  the build, the same gate `.github/workflows/amplify-build.yml` runs in CI (and that
+  `deploy-api.yml` runs before `sam deploy`; see CI/CD below).
+- Environment variables are set in the Amplify console (not in code or `.env` files):
+  `NEXT_PUBLIC_API_URL` → the API Gateway invoke URL. The admin UI holds no server secrets — it
+  talks to the API purely as a Bearer-token client (`web/lib/auth.ts`).
+- Backed by CloudFront + S3 under the hood.
+
+> **Auth is cross-origin to the API.** The frontend (`web/`) and the API are different origins.
+> Because auth is API-owned JWT (Bearer tokens in the `Authorization` header, not a `SameSite`
+> cookie), the admin UI at `/admin` calls the API cross-origin directly — no Next.js
+> rewrite/proxy trick is needed (that was only required for the old NextAuth cookie flow; see
+> `docs/api-routes.md`). The API's CORS `FRONTEND_URL` must include the web app's origin.
 
 ### Lambda + API Gateway — Express API
 
@@ -201,10 +210,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'   # matches the nodejs22.x Lambda runtime
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci            # installs devDeps incl. esbuild, required by BuildMethod: esbuild
 
       - name: Lint
         run: npm run lint
@@ -228,15 +237,20 @@ jobs:
 `server/` is a standalone npm project (its own `package.json` and lockfile), so the
 workflow just needs a `working-directory`, not an npm workspace flag.
 
-Amplify Hosting detects the push independently and builds the Next.js frontend on its
-own schedule. The two deploys are fully decoupled — a failed API deploy does not block
-the frontend deploy and vice versa.
+Amplify detects the push independently and builds `web/` on its own schedule. The two
+deploys — API and frontend — are fully decoupled: a failure in one does not block the other.
+
+### `amplify-build.yml` — frontend CI test gate
+
+A second workflow builds and tests `web/` (the public blog + the `/admin` dashboard) so pull
+requests are gated before merge (the same check Amplify's `preBuild` runs, but on PRs too,
+before anything deploys). It is path-filtered to `web/**`. Amplify itself does the deploy —
+this workflow only builds and runs tests.
 
 ### Path-based triggers
 
-The `paths` filter on the API workflow means frontend-only changes (components, pages)
-do not trigger a Lambda deploy. Add a matching `paths` filter to any Amplify notification
-workflow for the same reason.
+`deploy-api.yml` is filtered to `server/**` and `amplify-build.yml` to `web/**`, so each
+workflow runs only for the project it owns — a docs-only change spins up neither.
 
 ---
 

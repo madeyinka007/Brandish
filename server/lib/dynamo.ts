@@ -73,15 +73,37 @@ export async function checkRateLimit(ip: string): Promise<boolean> {
 // Rotating refresh tokens need server-side storage so the old token can be invalidated on
 // each refresh. Using the same TTL-table pattern as the two stores above: the record
 // auto-expires, revocation is a delete, and there's no long-lived state to clean up.
+//
+// LOCAL-DEV FALLBACK — set `AUTH_STORE=memory` to keep refresh tokens in a process-local Map
+// instead of DynamoDB. This lets login/refresh/logout work locally with no AWS credentials and
+// no `refresh_tokens` table. NEVER use it in production: the store is per-process (lost on
+// restart, not shared across Lambda instances). Anything other than `memory` (or unset) uses
+// DynamoDB. Only the refresh-token store has this fallback — view-dedup and rate-limit still
+// require DynamoDB.
+const USE_MEMORY_TOKEN_STORE = process.env.AUTH_STORE === 'memory';
+const memoryTokens = new Map<string, { userId: string; expiresAtSec: number }>();
+
+if (USE_MEMORY_TOKEN_STORE) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[auth] AUTH_STORE=memory — refresh tokens are kept in-process (local dev only, NOT for production).',
+  );
+}
+
+const nowSec = () => Math.floor(Date.now() / 1000);
 
 /** Persists an opaque refresh token → userId, auto-expiring after `ttlSeconds`. */
 export async function storeRefreshToken(token: string, userId: string, ttlSeconds: number): Promise<void> {
+  if (USE_MEMORY_TOKEN_STORE) {
+    memoryTokens.set(token, { userId, expiresAtSec: nowSec() + ttlSeconds });
+    return;
+  }
   await client.send(new PutItemCommand({
     TableName: REFRESH_TABLE,
     Item: {
       pk: { S: `refresh:${token}` },
       userId: { S: userId },
-      ttl: { N: String(Math.floor(Date.now() / 1000) + ttlSeconds) },
+      ttl: { N: String(nowSec() + ttlSeconds) },
     },
   }));
 }
@@ -94,6 +116,13 @@ export async function storeRefreshToken(token: string, userId: string, ttlSecond
  * is eventual, so we re-check the stored `ttl` rather than trust the item's absence alone).
  */
 export async function consumeRefreshToken(token: string): Promise<string | null> {
+  if (USE_MEMORY_TOKEN_STORE) {
+    const rec = memoryTokens.get(token);
+    memoryTokens.delete(token); // get-and-delete: a token is consumable at most once (rotation)
+    if (!rec) return null;
+    if (rec.expiresAtSec < nowSec()) return null; // expired
+    return rec.userId;
+  }
   const result = await client.send(new DeleteItemCommand({
     TableName: REFRESH_TABLE,
     Key: { pk: { S: `refresh:${token}` } },
@@ -102,12 +131,16 @@ export async function consumeRefreshToken(token: string): Promise<string | null>
   const userId = result.Attributes?.userId?.S;
   if (!userId) return null;
   const ttl = Number(result.Attributes?.ttl?.N ?? '0');
-  if (ttl && ttl < Math.floor(Date.now() / 1000)) return null;
+  if (ttl && ttl < nowSec()) return null;
   return userId;
 }
 
 /** Deletes a refresh token unconditionally — used on logout. Idempotent. */
 export async function revokeRefreshToken(token: string): Promise<void> {
+  if (USE_MEMORY_TOKEN_STORE) {
+    memoryTokens.delete(token);
+    return;
+  }
   await client.send(new DeleteItemCommand({
     TableName: REFRESH_TABLE,
     Key: { pk: { S: `refresh:${token}` } },

@@ -1,0 +1,45 @@
+name: Deploy API
+
+# The Express API (server/) → AWS Lambda via SAM. Runs only when server/ changes, so a
+# frontend-only push (web/) never triggers a Lambda deploy. The web/ frontend (public blog +
+# admin dashboard) deploys independently via Amplify — see amplify-build.yml and
+# docs/aws-infrastructure.md.
+on:
+  push:
+    branches: [main]
+    paths: ['server/**']
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest   # GitHub-hosted ubuntu ships the AWS SAM CLI preinstalled
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'   # matches the nodejs22.x Lambda runtime in template.yaml
+
+      # Installs devDeps too — esbuild is required by `Metadata: BuildMethod: esbuild`.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: SAM build
+        run: sam build
+
+      - name: SAM deploy
+        run: sam deploy --no-confirm-changeset --no-fail-on-empty-changeset

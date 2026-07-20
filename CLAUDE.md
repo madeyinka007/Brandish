@@ -32,9 +32,9 @@ with per-IP deduplication via DynamoDB TTL.
 | Media | AWS S3 + CloudFront | Presigned URL uploads; never route through Lambda |
 | Email | AWS SES | Transactional alerts + bulk newsletter delivery |
 | Secrets | AWS SSM Parameter Store | SecureString for all credentials |
-| Hosting | AWS Amplify Hosting | Serves Next.js; backed by CloudFront + S3 |
+| Hosting | AWS Amplify Hosting | One Next.js app (`web/`) serving both the public blog and the admin dashboard (`/admin`); backed by CloudFront + S3 |
 | CI/CD | GitHub Actions | Separate jobs for frontend and API |
-| Auth | Custom JWT (API-owned) | Express-issued access tokens + rotating refresh tokens (DynamoDB). Replaced NextAuth server-side; `web/` NextAuth wiring pending rework. See `docs/auth.md` |
+| Auth | Custom JWT (API-owned) | Express-issued access tokens + rotating refresh tokens (DynamoDB). Replaced NextAuth. The admin UI (`web/app/admin/`) authenticates against `/api/auth/*` with Bearer tokens stored client-side (`web/lib/auth.ts`); the API is the real boundary (Lambda authorizer + `requireRole`). See `docs/auth.md` |
 | Rich text | Tiptap | JSON output stored in `posts.body` |
 | Testing | Jest (`ts-jest`) | Unit tests only, in both `web/` and `server/` — DB/AWS clients are mocked, no real network calls. See `docs/development.md` |
 
@@ -43,10 +43,16 @@ with per-IP deduplication via DynamoDB TTL.
 ## Repository structure
 
 `web/` and `server/` are independent projects — each has its own `package.json`,
-`node_modules`, and lockfile, and each can be installed, run, and deployed without the
-other present. There is no root-level workspace tying them together. Shared code (Mongoose
-models, `types/`, slug generation) is not imported across the boundary — it is duplicated
-identically in both trees, per the existing convention (see `docs/development.md`).
+`node_modules`, and lockfile, and each can be installed, run, and deployed without the other
+present. There is no root-level workspace tying them together. Shared code (Mongoose models,
+`types/`, slug generation) is not imported across the boundary — it is duplicated identically
+in each tree that needs it, per the existing convention (see `docs/development.md`).
+
+`web/` is a **Next.js app** that hosts **both** the public blog (reader-facing) and the admin
+dashboard at **`web/app/admin/`** (login at `/admin/login`, the gated dashboard route group at
+`/admin`). The admin UI authenticates against the API's `/api/auth/*` endpoints with Bearer
+access tokens stored client-side (API-owned JWT; see `docs/auth.md` and `web/lib/auth.ts`), not
+NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructure.md`.
 
 ```
 /
@@ -59,37 +65,33 @@ identically in both trees, per the existing convention (see `docs/development.md
 │   │   │       └── page.tsx       # Post page (ISR)
 │   │   ├── search/
 │   │   │   └── page.tsx           # Search results (SSR — dynamic query)
-│   │   ├── admin/
-│   │   │   ├── login/page.tsx     # Credentials login form — NOT gated
-│   │   │   └── (dashboard)/       # Route group — gated, URL-transparent (/admin, /admin/posts, ...)
-│   │   │       ├── layout.tsx     # getServerSession gate; redirects to /admin/login
-│   │   │       ├── page.tsx       # Dashboard
-│   │   │       ├── posts/page.tsx
-│   │   │       ├── categories/page.tsx
-│   │   │       ├── media/page.tsx
-│   │   │       ├── comments/page.tsx
-│   │   │       ├── subscribers/page.tsx
-│   │   │       ├── mailing/page.tsx
-│   │   │       ├── users/page.tsx
-│   │   │       ├── analytics/page.tsx
-│   │   │       └── settings/page.tsx
-│   │   ├── api/
-│   │   │   └── auth/
-│   │   │       └── [...nextauth]/route.ts  # NextAuth handler — the one Next.js-hosted API route
-│   │   └── newsletter/
-│   │       └── confirm/page.tsx   # Email confirmation landing page
+│   │   ├── newsletter/
+│   │   │   └── confirm/page.tsx   # Email confirmation landing page (public blog — planned; empty placeholder removed)
+│   │   └── admin/                 # ADMIN DASHBOARD — built from the Figma design
+│   │       ├── login/page.tsx     # Sign-in (Figma node 22:2) — POST /api/auth/login, stores Bearer tokens, redirects to /admin
+│   │       └── (dashboard)/       # Gated route group — client auth guard lives in layout.tsx
+│   │           ├── layout.tsx     # Guard + Sidebar + Topbar shell; redirects to /admin/login when no token
+│   │           ├── page.tsx       # Dashboard /admin (Figma node 0:1) — stat cards, traffic chart, recent content, activity, quick actions
+│   │           └── [section]/page.tsx  # Placeholder for not-yet-built sections (/admin/posts, /admin/categories, /admin/users, …)
+│   │   # ([category]/ and search/ public-blog pages are planned; their empty placeholder files were removed during the admin build)
 │   │
 │   ├── components/
-│   │   ├── PostCard.tsx
+│   │   ├── PostCard.tsx           # (public blog — planned)
 │   │   ├── PostBody.tsx
 │   │   ├── ShareBar.tsx           # Client-side share: X, LinkedIn, WhatsApp, Facebook
 │   │   ├── ViewCounter.tsx        # Fires POST /views/:id on mount (non-blocking)
 │   │   ├── CommentThread.tsx
 │   │   ├── CommentForm.tsx        # Includes reCAPTCHA v3
-│   │   └── NewsletterBanner.tsx
+│   │   ├── NewsletterBanner.tsx
+│   │   └── admin/                 # Admin dashboard UI (built)
+│   │       ├── Sidebar.tsx        # Dark nav (MAIN/TOOLS, active state, badges, user card, sign-out)
+│   │       ├── Topbar.tsx         # Search + New Post + notifications + avatar
+│   │       └── icons.tsx          # Inline SVG icon set (no icon-lib dependency)
 │   │
 │   ├── lib/
-│   │   ├── mongodb.ts             # Cached MongoClient for Next.js server components
+│   │   ├── api.ts                 # API base URL (NEXT_PUBLIC_API_URL) + typed fetch helper (built)
+│   │   ├── auth.ts                # Client auth — login/logout/token storage/authFetch against /api/auth (Bearer; built). Replaced the NextAuth config.
+│   │   ├── mongodb.ts             # Cached MongoClient for Next.js server components (public blog — planned)
 │   │   ├── mongoose.ts            # Cached Mongoose connection for Next.js server components
 │   │   ├── models/                # Mongoose models — identical copy of server/lib/models/
 │   │   │   ├── User.ts
@@ -98,22 +100,25 @@ identically in both trees, per the existing convention (see `docs/development.md
 │   │   │   ├── Tag.ts
 │   │   │   ├── Comment.ts
 │   │   │   └── Subscriber.ts
-│   │   ├── slug.ts                # Identical copy of server/lib/slug.ts
-│   │   └── auth.ts                # NextAuth config
+│   │   └── slug.ts                # Identical copy of server/lib/slug.ts (public blog — planned)
+│   │                              # (client auth is lib/auth.ts above; the old NextAuth lib/auth.ts was replaced)
 │   │
 │   ├── types/
-│   │   ├── index.ts                # TypeScript interfaces for every collection — identical copy of server/types/index.ts
-│   │   └── next-auth.d.ts          # Module augmentation: Session/User/JWT (userId, role, avatar)
+│   │   └── index.ts                # TypeScript interfaces for every collection — identical copy of server/types/index.ts
+│   │                              # (next-auth.d.ts is vestigial — NextAuth is no longer used)
 │   │
 │   ├── __tests__/                  # Jest unit tests — mirrors lib/, DB/AWS clients mocked
 │   │   └── lib/
 │   │       └── slug.test.ts
 │   │
+│   ├── next.config.mjs             # outputFileTracingRoot pinned to web/
+│   ├── postcss.config.mjs          # Tailwind CSS v4
+│   ├── tsconfig.json
 │   ├── amplify.yml                 # Amplify build spec
 │   ├── jest.config.js
 │   ├── package.json
 │   ├── .gitignore
-│   └── .env.local
+│   └── .env.local                 # NEXT_PUBLIC_API_URL → the Express API base URL
 │
 ├── server/                        # Express API (Lambda target) — runs and deploys independently
 │   ├── index.ts                   # Express app + serverless-http export
@@ -254,7 +259,7 @@ identically in both trees, per the existing convention (see `docs/development.md
 │
 ├── .github/workflows/
 │   ├── deploy-api.yml             # sam deploy on push to main — scoped to server/
-│   └── amplify-build.yml          # Amplify triggers independently on web/; this notifies on status
+│   └── amplify-build.yml          # Frontend CI — builds + tests web/ (public blog + /admin dashboard) on push/PR; Amplify does the actual deploy
 │
 ├── docs/
 │   ├── data-model.md              # MongoDB + DynamoDB schemas and indexes
