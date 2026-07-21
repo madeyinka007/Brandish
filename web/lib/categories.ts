@@ -51,6 +51,12 @@ export async function listCategories(): Promise<CategoryRecord[]> {
   return handle<CategoryRecord[]>(await authFetch("/api/admin/categories"));
 }
 
+/** Single category by id. The API has no GET /:id, so we read it from the list (small dataset). */
+export async function getCategory(id: string): Promise<CategoryRecord | null> {
+  const categories = await listCategories();
+  return categories.find((c) => c._id === id) ?? null;
+}
+
 export interface CreateCategoryPayload {
   name: string;
   description?: string;

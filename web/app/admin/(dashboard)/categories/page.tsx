@@ -20,6 +20,7 @@ import {
   Folder,
   GripVertical,
   MoreVertical,
+  Pencil,
   Plus,
   Star,
   Trash,
@@ -298,6 +299,12 @@ export default function CategoriesPage() {
                           onClick={(e) => e.stopPropagation()}
                           className="absolute right-4 top-11 z-10 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-left shadow-lg"
                         >
+                          <Link
+                            href={`/admin/categories/${c._id}/edit`}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                          >
+                            <Pencil width={15} height={15} /> Edit
+                          </Link>
                           <button
                             onClick={() => toggleStatus(c)}
                             disabled={busy}
