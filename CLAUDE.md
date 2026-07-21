@@ -76,7 +76,8 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │           ├── users/new/page.tsx        # Add user (Figma 30:505) — POST /api/admin/users (name/email/role/password + invite)
 │   │           ├── users/[id]/edit/page.tsx  # Edit user — prefilled; PUT /api/admin/users/:id (name/email) + /role + /status
 │   │           ├── categories/page.tsx       # Categories list (Figma 43:519) — real GET /api/admin/categories; filter/search, hide/show/delete
-│   │           ├── categories/new/page.tsx   # Add category (Figma 44:683) — POST /api/admin/categories (name/desc/color/status/seo)
+│   │           ├── categories/new/page.tsx        # Add category (Figma 44:683) — POST /api/admin/categories (name/desc/color/status/seo)
+│   │           ├── categories/[id]/edit/page.tsx  # Edit category — prefilled; PUT /api/admin/categories/:id (slug stays immutable)
 │   │           └── [section]/page.tsx  # Placeholder for the remaining sections (/admin/posts, /admin/media, …)
 │   │   # ([category]/ and search/ public-blog pages are planned; their empty placeholder files were removed during the admin build)
 │   │
@@ -100,7 +101,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── api.ts                 # API base URL (NEXT_PUBLIC_API_URL) + typed fetch helper (built)
 │   │   ├── auth.ts                # Client auth — login/logout/token storage/authFetch against /api/auth (Bearer; built). Replaced the NextAuth config.
 │   │   ├── users.ts               # Users admin API client — list/get/create/update/setStatus/assignRole/delete via authFetch (built)
-│   │   ├── categories.ts          # Categories admin API client — list/create/update/delete via authFetch (built)
+│   │   ├── categories.ts          # Categories admin API client — list/get/create/update/delete via authFetch (built)
 │   │   ├── mongodb.ts             # Cached MongoClient for Next.js server components (public blog — planned)
 │   │   ├── mongoose.ts            # Cached Mongoose connection for Next.js server components
 │   │   ├── models/                # Mongoose models — identical copy of server/lib/models/
