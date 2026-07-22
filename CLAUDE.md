@@ -78,7 +78,8 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │           ├── categories/page.tsx       # Categories list (Figma 43:519) — real GET /api/admin/categories; filter/search, hide/show/delete
 │   │           ├── categories/new/page.tsx        # Add category (Figma 44:683) — POST /api/admin/categories (name/desc/color/status/seo)
 │   │           ├── categories/[id]/edit/page.tsx  # Edit category — prefilled; PUT /api/admin/categories/:id (slug stays immutable)
-│   │           └── [section]/page.tsx  # Placeholder for the remaining sections (/admin/posts, /admin/media, …)
+│   │           ├── media/page.tsx                 # Media library (Figma 85:416) — GET /api/admin/media; upload (presigned S3), add-by-URL, delete, details panel
+│   │           └── [section]/page.tsx  # Placeholder for the remaining sections (/admin/posts, /admin/comments, …)
 │   │   # ([category]/ and search/ public-blog pages are planned; their empty placeholder files were removed during the admin build)
 │   │
 │   ├── components/
@@ -95,6 +96,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │       ├── Footer.tsx         # Dashboard footer (Figma 38:2) — copyright/version, links, system-status pill
 │   │       ├── user-ui.tsx        # Shared Users UI — role/status badges, avatars, role↔label mapping
 │   │       ├── category-ui.tsx    # Shared Categories UI — status badge, colour swatches, colour dot, client slugify
+│   │       ├── media-ui.tsx       # Shared Media UI — mimeType→category, byte formatting, filename, thumbnail (img/gradient+icon)
 │   │       └── icons.tsx          # Inline SVG icon set (no icon-lib dependency)
 │   │
 │   ├── lib/
@@ -102,6 +104,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── auth.ts                # Client auth — login/logout/token storage/authFetch against /api/auth (Bearer; built). Replaced the NextAuth config.
 │   │   ├── users.ts               # Users admin API client — list/get/create/update/setStatus/assignRole/delete via authFetch (built)
 │   │   ├── categories.ts          # Categories admin API client — list/get/create/update/delete via authFetch (built)
+│   │   ├── media.ts               # Media admin API client — list/createFromUrl/uploadFile (presigned→PUT→record)/delete (built)
 │   │   ├── mongodb.ts             # Cached MongoClient for Next.js server components (public blog — planned)
 │   │   ├── mongoose.ts            # Cached Mongoose connection for Next.js server components
 │   │   ├── models/                # Mongoose models — identical copy of server/lib/models/
