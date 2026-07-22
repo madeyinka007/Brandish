@@ -261,3 +261,37 @@ export const GripVertical = (p: P) => (
     <circle cx="15" cy="18" r="1" />
   </Svg>
 );
+export const Play = (p: P) => (
+  <Svg {...p}>
+    <path d="M6 4v16l14-8Z" />
+  </Svg>
+);
+export const Music = (p: P) => (
+  <Svg {...p}>
+    <path d="M9 18V5l12-2v13" />
+    <circle cx="6" cy="18" r="3" />
+    <circle cx="18" cy="16" r="3" />
+  </Svg>
+);
+export const Copy = (p: P) => (
+  <Svg {...p}>
+    <rect x="9" y="9" width="13" height="13" rx="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </Svg>
+);
+export const X = (p: P) => (
+  <Svg {...p}>
+    <path d="M18 6 6 18M6 6l12 12" />
+  </Svg>
+);
+export const Link2 = (p: P) => (
+  <Svg {...p}>
+    <path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 0 1 0 10h-2M8 12h8" />
+  </Svg>
+);
+export const HardDrive = (p: P) => (
+  <Svg {...p}>
+    <path d="M22 12H2M5.5 5h13l3.5 7v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6l3.5-7Z" />
+    <path d="M6 16h.01M10 16h.01" />
+  </Svg>
+);
