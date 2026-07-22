@@ -12,6 +12,7 @@ import {
   type ApiError,
 } from "@/lib/users";
 import { Avatar, ROLE_META, ROLE_ORDER, statusOf, formatDate, type Role } from "@/components/admin/user-ui";
+import MediaPickerModal from "@/components/admin/MediaPickerModal";
 import { ArrowLeft, Check, Mail, Save } from "@/components/admin/icons";
 
 function messageFor(err: ApiError): string {
@@ -40,6 +41,8 @@ export default function EditUserPage({ params }: { params: Promise<{ id: string 
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("author");
   const [status, setStatus] = useState<"active" | "suspended">("active");
+  const [avatar, setAvatar] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,6 +63,7 @@ export default function EditUserPage({ params }: { params: Promise<{ id: string 
         setEmail(u.email);
         setRole(u.role);
         setStatus(u.active ? "active" : "suspended");
+        setAvatar(u.avatar ?? "");
       } catch (e) {
         if (active) setLoadError((e as Error).message || "Failed to load user");
       } finally {
@@ -78,13 +82,14 @@ export default function EditUserPage({ params }: { params: Promise<{ id: string 
   const desiredActive = status === "active";
 
   const changes = useMemo(() => {
-    if (!original) return { name: false, email: false, role: false, status: false, any: false };
+    if (!original) return { name: false, email: false, role: false, status: false, avatar: false, any: false };
     const name = fullName !== original.name;
     const em = email.trim() !== original.email;
     const rl = role !== original.role;
     const st = desiredActive !== original.active;
-    return { name, email: em, role: rl, status: st, any: name || em || rl || st };
-  }, [original, fullName, email, role, desiredActive]);
+    const av = (avatar || "") !== (original.avatar || "");
+    return { name, email: em, role: rl, status: st, avatar: av, any: name || em || rl || st || av };
+  }, [original, fullName, email, role, desiredActive, avatar]);
 
   const canSave = !!original && firstName.trim() !== "" && lastName.trim() !== "" && emailValid && changes.any;
 
@@ -94,9 +99,9 @@ export default function EditUserPage({ params }: { params: Promise<{ id: string 
     if (!original || !canSave) return;
     setSaving(true);
     try {
-      // Profile (name/email) share one endpoint; role and status have their own.
-      if (changes.name || changes.email) {
-        await updateUser(original._id, { name: fullName, email: email.trim() });
+      // Profile (name/email/avatar) share one endpoint; role and status have their own.
+      if (changes.name || changes.email || changes.avatar) {
+        await updateUser(original._id, { name: fullName, email: email.trim(), avatar });
       }
       if (changes.role) await assignRole(original._id, role);
       if (changes.status) await setUserStatus(original._id, desiredActive);
@@ -179,10 +184,28 @@ export default function EditUserPage({ params }: { params: Promise<{ id: string 
             <p className="text-sm text-slate-500">Basic information shown across the workspace.</p>
 
             <div className="mt-4 flex items-center gap-4">
-              <Avatar name={previewName} size={56} />
+              <Avatar name={previewName} src={avatar} size={56} />
               <div className="text-sm">
                 <p className="font-medium text-slate-700">Profile photo</p>
-                <p className="text-xs text-slate-400">Falls back to initials. Upload isn&rsquo;t wired up yet.</p>
+                <p className="text-xs text-slate-400">Pick an image from the media library, or leave it for initials.</p>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPickerOpen(true)}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                  >
+                    Choose from library
+                  </button>
+                  {avatar && (
+                    <button
+                      type="button"
+                      onClick={() => setAvatar("")}
+                      className="rounded-lg px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -262,7 +285,7 @@ export default function EditUserPage({ params }: { params: Promise<{ id: string 
           <section className="rounded-xl border border-slate-200 bg-white p-5">
             <h2 className="font-semibold text-slate-900">Preview</h2>
             <div className="mt-4 flex items-center gap-3">
-              <Avatar name={previewName} size={44} />
+              <Avatar name={previewName} src={avatar} size={44} />
               <div className="min-w-0">
                 <p className="truncate font-medium text-slate-800">{previewName}</p>
                 <p className="truncate text-xs text-slate-400">{email || "email@brandish.co"}</p>
@@ -284,6 +307,8 @@ export default function EditUserPage({ params }: { params: Promise<{ id: string 
           </section>
         </div>
       </div>
+
+      <MediaPickerModal open={pickerOpen} onClose={() => setPickerOpen(false)} onSelect={(url) => setAvatar(url)} />
     </form>
   );
 }

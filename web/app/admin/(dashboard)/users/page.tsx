@@ -359,7 +359,7 @@ export default function UsersPage() {
                       </td>
                       <td className="py-3">
                         <div className="flex items-center gap-3">
-                          <Avatar name={u.name} />
+                          <Avatar name={u.name} src={u.avatar} />
                           <div className="min-w-0">
                             <div className="truncate font-medium text-slate-800">{u.name}</div>
                             <div className="truncate text-xs text-slate-400">{u.email}</div>

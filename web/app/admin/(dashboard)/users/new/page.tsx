@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createUser, setUserStatus, type ApiError } from "@/lib/users";
 import { Avatar, ROLE_META, ROLE_ORDER, type Role } from "@/components/admin/user-ui";
-import { ArrowLeft, Camera, Check, Mail, Phone, Send } from "@/components/admin/icons";
+import MediaPickerModal from "@/components/admin/MediaPickerModal";
+import { ArrowLeft, Check, Mail, Phone, Send } from "@/components/admin/icons";
 
 type Invite = "email" | "password";
 
@@ -36,6 +37,8 @@ export default function AddUserPage() {
   const [status, setStatus] = useState<"active" | "suspended">("active");
   const [invite, setInvite] = useState<Invite>("email");
   const [password, setPassword] = useState("");
+  const [avatar, setAvatar] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,6 +72,7 @@ export default function AddUserPage() {
         email: email.trim(),
         role,
         password: invite === "password" ? password : randomPassword(),
+        avatar: avatar || undefined,
       });
       // Account status has its own endpoint; only call it when the admin picked "suspended".
       if (status === "suspended") await setUserStatus(created._id, false);
@@ -140,16 +144,28 @@ export default function AddUserPage() {
             <p className="text-sm text-slate-500">Basic information shown across the workspace.</p>
 
             <div className="mt-4 flex items-center gap-4">
-              {fullName ? (
-                <Avatar name={fullName} size={56} />
-              ) : (
-                <span className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-                  <Camera width={22} height={22} />
-                </span>
-              )}
+              <Avatar name={previewName} src={avatar} size={56} />
               <div className="text-sm">
                 <p className="font-medium text-slate-700">Profile photo</p>
-                <p className="text-xs text-slate-400">Falls back to initials. Upload isn&rsquo;t wired up yet.</p>
+                <p className="text-xs text-slate-400">Pick an image from the media library, or leave it for initials.</p>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPickerOpen(true)}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                  >
+                    Choose from library
+                  </button>
+                  {avatar && (
+                    <button
+                      type="button"
+                      onClick={() => setAvatar("")}
+                      className="rounded-lg px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -294,7 +310,7 @@ export default function AddUserPage() {
           <section className="rounded-xl border border-slate-200 bg-white p-5">
             <h2 className="font-semibold text-slate-900">Preview</h2>
             <div className="mt-4 flex items-center gap-3">
-              <Avatar name={previewName} size={44} />
+              <Avatar name={previewName} src={avatar} size={44} />
               <div className="min-w-0">
                 <p className="truncate font-medium text-slate-800">{previewName}</p>
                 <p className="truncate text-xs text-slate-400">{email || "email@brandish.co"}</p>
@@ -324,6 +340,8 @@ export default function AddUserPage() {
           </section>
         </div>
       </div>
+
+      <MediaPickerModal open={pickerOpen} onClose={() => setPickerOpen(false)} onSelect={(url) => setAvatar(url)} />
     </form>
   );
 }
