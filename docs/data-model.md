@@ -168,19 +168,24 @@ built via `MongoLibrary.createModel` (`CategoryModel extends BaseModel`; see
 {
   _id:         ObjectId,
   name:        string,            // e.g. "Fintech"
-  slug:        string,            // unique index; e.g. "fintech"
+  slug:        string,            // unique index; generated from name on create; IMMUTABLE after
+  description: string,            // short note shown on the tag archive page
+  color:       string,            // hex or CSS variable for the tag chip
   createdAt:   Date,
+  updatedAt:   Date,              // managed by Mongoose `timestamps: true`
 }
 ```
 
 **Index:** `{ slug: 1 }` unique.
 
 Mongoose model: `web/lib/models/Tag.ts` — schema-equivalent `server/lib/models/Tag.ts`
-built via `MongoLibrary.createModel` (`TagModel extends BaseModel`). Slug is generated from
-`name` on create; a duplicate is a `409` conflict (not auto-suffixed). Referenced from
-`posts.tags` (array of tag slugs, not ObjectIds — same denormalised-slug convention as
-`posts.category`); deleting a tag does **not** cascade to `posts.tags` (see
-[`docs/api-routes.md`](api-routes.md)).
+built via `MongoLibrary.createModel` (`TagModel extends BaseModel`). Full CRUD (create/read/
+update/delete). Slug is generated from `name` on create; a duplicate is a `409` conflict (not
+auto-suffixed). **Like categories, the slug is immutable** — editing a tag changes
+`name`/`description`/`color` only, never the slug (it's the identifier `posts.tags`
+denormalizes). Referenced from `posts.tags` (array of tag slugs, not ObjectIds — same
+denormalised-slug convention as `posts.category`); deleting a tag does **not** cascade to
+`posts.tags` (see [`docs/api-routes.md`](api-routes.md)).
 
 ---
 

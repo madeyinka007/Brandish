@@ -156,7 +156,8 @@ reaches Mongoose.
 | Method | Route | Min role | Description |
 |---|---|---|---|
 | `GET` | `/api/admin/tags` | `editor` | List all tags, full detail |
-| `POST` | `/api/admin/tags` | `editor` | Create a tag — slug auto-generated from `name`, same `uniqueSlug()` convention as posts |
+| `POST` | `/api/admin/tags` | `editor` | Create a tag — `{ name, description?, color? }`; slug from `name`; `409 TAG_EXISTS` on a duplicate |
+| `PUT` | `/api/admin/tags/:id` | `editor` | Edit `name`/`description`/`color` — **never `slug`** (immutable, like categories) |
 | `DELETE` | `/api/admin/tags/:id` | `editor` | Delete a tag |
 
 > Unlike categories, tags aren't a fixed set — editors create them ad hoc while tagging
