@@ -61,6 +61,23 @@ Two usage patterns:
 - Editors upload via S3 presigned URLs — files never pass through Lambda
 - CloudFront domain is used for all `media.url` values stored in MongoDB
 - No public bucket policy — all access goes through CloudFront
+- **The upload bucket MUST have a CORS rule allowing browser `PUT`.** The admin media page
+  uploads the file straight from the browser to the S3 presigned URL, which is a *cross-origin*
+  request — without a CORS config S3 rejects the preflight (`OPTIONS` → `403`, no
+  `Access-Control-Allow-Origin`) and the browser blocks the upload (the presigned URL itself is
+  fine; `curl` PUT succeeds because it sends no preflight). Apply, e.g.:
+  ```bash
+  aws s3api put-bucket-cors --bucket "$S3_BUCKET_NAME" --region us-east-1 --cors-configuration '{
+    "CORSRules": [{
+      "AllowedOrigins": ["http://localhost:3000", "https://<your-amplify-or-domain-url>"],
+      "AllowedMethods": ["PUT", "GET", "HEAD"],
+      "AllowedHeaders": ["*"],
+      "ExposeHeaders": ["ETag"],
+      "MaxAgeSeconds": 3000
+    }]
+  }'
+  ```
+  List every web origin that uploads (local dev + each deployed frontend URL).
 
 **Static HTML pages (ISR equivalent):**
 - The Revalidate Lambda uploads rendered HTML to S3 after each post publish
