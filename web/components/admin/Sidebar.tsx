@@ -33,10 +33,10 @@ const MAIN: NavItem[] = [
   { label: "Taxonomy", href: "/admin/taxonomy", icon: ListTree },
   { label: "Users", href: "/admin/users", icon: Users },
   { label: "Media", href: "/admin/media", icon: ImageIcon },
+  { label: "Comments", href: "/admin/comments", icon: MessageSquare, badge: 12 }
 ];
 
 const TOOLS: NavItem[] = [
-  { label: "Comments", href: "/admin/comments", icon: MessageSquare, badge: 12 },
   { label: "Campaign", href: "/admin/campaign", icon: Send },
   { label: "Analytics", href: "/admin/analytics", icon: BarChart },
   { label: "Settings", href: "/admin/settings", icon: Settings },

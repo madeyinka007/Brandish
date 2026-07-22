@@ -71,13 +71,24 @@ export async function uploadFile(file: File): Promise<MediaRecord> {
     ),
   );
 
-  const put = await fetch(presigned.uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": file.type || "application/octet-stream" },
-    body: file,
-  });
+  let put: Response;
+  try {
+    put = await fetch(presigned.uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: file,
+    });
+  } catch {
+    // fetch rejects (no Response) when the browser blocks the cross-origin request — almost
+    // always because the S3 bucket has no CORS rule allowing PUT from this origin.
+    const err = new Error(
+      "The browser was blocked from uploading to S3. The upload bucket needs a CORS rule allowing PUT from this site's origin (see docs/aws-infrastructure.md).",
+    ) as ApiError;
+    err.code = "S3_CORS_BLOCKED";
+    throw err;
+  }
   if (!put.ok) {
-    const err = new Error(`Upload to storage failed (${put.status})`) as ApiError;
+    const err = new Error(`Upload to storage failed (${put.status}).`) as ApiError;
     err.status = put.status;
     throw err;
   }
