@@ -410,7 +410,10 @@ export default function TaxonomyPage() {
                             </span>
                           </td>
                           <td className="py-3 font-mono text-xs text-slate-500">/{t.slug}</td>
-                          <td className="py-3 text-slate-400">—</td>
+                          <td className="py-3 text-slate-600">
+                            {t.postCount}
+                            {t.postCount === 0 && <span className="ml-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">Unused</span>}
+                          </td>
                           <td className="py-3 text-slate-500">{formatDate(t.createdAt)}</td>
                           <td className="py-3 pr-4">
                             <div className="flex justify-end gap-1">
