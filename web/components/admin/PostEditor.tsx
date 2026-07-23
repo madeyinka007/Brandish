@@ -6,8 +6,6 @@ import { useRouter } from "next/navigation";
 import {
   createPost,
   updatePost,
-  textToDoc,
-  docToText,
   extractYouTubeId,
   type PostRecord,
   type PostPayload,
@@ -20,6 +18,7 @@ import { listTags, type TagRecord } from "@/lib/tags";
 import { getStoredUser } from "@/lib/auth";
 import { ColorDot, slugify } from "@/components/admin/category-ui";
 import MediaPickerModal from "@/components/admin/MediaPickerModal";
+import RichTextEditor from "@/components/admin/RichTextEditor";
 import { ArrowLeft, Check, FileText, ImageIcon, Play, User as UserIcon, X } from "@/components/admin/icons";
 
 const EXCERPT_MAX = 220;
@@ -53,7 +52,7 @@ export default function PostEditor({ mode, initial }: { mode: "create" | "edit";
   const router = useRouter();
 
   const [title, setTitle] = useState(initial?.title ?? "");
-  const [bodyText, setBodyText] = useState(initial ? docToText(initial.body) : "");
+  const [body, setBody] = useState<unknown>(initial?.body ?? null);
   const [excerpt, setExcerpt] = useState(initial?.excerpt ?? "");
   const [format, setFormat] = useState<PostFormat>(initial?.format ?? "article");
   const [coverImage, setCoverImage] = useState(initial?.coverImage ?? "");
@@ -102,7 +101,7 @@ export default function PostEditor({ mode, initial }: { mode: "create" | "edit";
     try {
       const payload: PostPayload = {
         title: title.trim(),
-        body: textToDoc(bodyText),
+        body: body ?? { type: "doc", content: [] },
         excerpt: excerpt.trim(),
         format,
         coverImage,
@@ -182,14 +181,7 @@ export default function PostEditor({ mode, initial }: { mode: "create" | "edit";
 
             <div className="mt-4">
               <label className="mb-1.5 block text-sm font-medium text-slate-700">Body</label>
-              <textarea
-                value={bodyText}
-                onChange={(e) => setBodyText(e.target.value)}
-                rows={12}
-                placeholder="Write the post… (blank line = new paragraph)"
-                className={`${inputCls} resize-y font-normal`}
-              />
-              <p className="mt-1 text-xs text-slate-400">Stored as rich-text JSON. A full formatting toolbar is a planned enhancement.</p>
+              <RichTextEditor initialContent={initial?.body ?? undefined} onChange={setBody} placeholder="Write the post…" />
             </div>
           </section>
 
