@@ -102,6 +102,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │       ├── category-ui.tsx    # Shared Categories UI — status badge, colour swatches, colour dot, client slugify
 │   │       ├── MediaPickerModal.tsx # Pick an image from the media library (or paste a URL) — used by user avatar + post cover/gallery/og
 │   │       ├── PostEditor.tsx     # Shared add/edit post editor — 3 formats (article/gallery/video), media-library images, category/tags/status/SEO
+│   │       ├── RichTextEditor.tsx # Tiptap rich-text editor for posts.body — toolbar (bold/italic/underline/H2-3/lists/quote/code/link/image); getJSON() == posts.body; inline images from media library
 │   │       ├── media-ui.tsx       # Shared Media UI — mimeType→category, byte formatting, filename, thumbnail (img/gradient+icon)
 │   │       └── icons.tsx          # Inline SVG icon set (no icon-lib dependency)
 │   │
