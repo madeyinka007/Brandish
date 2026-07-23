@@ -266,6 +266,12 @@ export const Play = (p: P) => (
     <path d="M6 4v16l14-8Z" />
   </Svg>
 );
+export const Clock = (p: P) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2" />
+  </Svg>
+);
 export const Music = (p: P) => (
   <Svg {...p}>
     <path d="M9 18V5l12-2v13" />

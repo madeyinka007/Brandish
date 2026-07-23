@@ -72,6 +72,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │       └── (dashboard)/       # Gated route group — client auth guard lives in layout.tsx
 │   │           ├── layout.tsx     # Guard + Sidebar + Topbar shell; redirects to /admin/login when no token
 │   │           ├── page.tsx       # Dashboard /admin (Figma node 0:1) — stat cards, traffic chart, recent content, activity, quick actions
+│   │           ├── posts/page.tsx            # Content/Posts listing (Figma 98:370) — real GET /api/admin/posts; status tabs/category filter/search/bulk-delete
 │   │           ├── users/page.tsx           # Users list (Figma 23:793) — real GET /api/admin/users; filter/search/bulk, edit/activate/suspend/delete
 │   │           ├── users/new/page.tsx        # Add user (Figma 30:505) — POST /api/admin/users (name/email/role/password/avatar + invite); avatar via MediaPickerModal
 │   │           ├── users/[id]/edit/page.tsx  # Edit user — prefilled; PUT /api/admin/users/:id (name/email/avatar) + /role + /status
@@ -108,6 +109,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── categories.ts          # Categories admin API client — list/get/create/update/delete via authFetch (built)
 │   │   ├── media.ts               # Media admin API client — list/createFromUrl/uploadFile (presigned→PUT→record)/delete (built)
 │   │   ├── tags.ts                # Tags/Taxonomy admin API client — list/create/update/delete via authFetch (built)
+│   │   ├── posts.ts               # Posts admin API client — adminList (paginated) + delete via authFetch (built)
 │   │   ├── mongodb.ts             # Cached MongoClient for Next.js server components (public blog — planned)
 │   │   ├── mongoose.ts            # Cached Mongoose connection for Next.js server components
 │   │   ├── models/                # Mongoose models — identical copy of server/lib/models/
