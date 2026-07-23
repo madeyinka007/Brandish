@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { listPosts, deletePost, type PostRecord, type PostStatus, type ApiError } from "@/lib/posts";
 import { listCategories, type CategoryRecord } from "@/lib/categories";
 import { Avatar, formatDate } from "@/components/admin/user-ui";
@@ -235,13 +236,12 @@ export default function PostsPage() {
           >
             <Download width={16} height={16} /> Export CSV
           </button>
-          <button
-            onClick={() => setNotice("The post editor isn’t built yet — this page lists and manages existing posts.")}
-            title="Post editor coming soon"
+          <Link
+            href="/admin/posts/new"
             className="flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark"
           >
             <Plus width={16} height={16} /> New Post
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -384,6 +384,9 @@ export default function PostsPage() {
                       </button>
                       {menuFor === p._id && (
                         <div onClick={(e) => e.stopPropagation()} className="absolute right-4 top-11 z-10 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-left shadow-lg">
+                          <Link href={`/admin/posts/${p._id}/edit`} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                            <Pencil width={15} height={15} /> Edit
+                          </Link>
                           <button onClick={() => copyLink(p)} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
                             <Copy width={15} height={15} /> Copy link
                           </button>
