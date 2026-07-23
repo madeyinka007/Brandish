@@ -118,6 +118,12 @@ export const Users = (p: P) => (
     <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13A4 4 0 0 1 16 11" />
   </Svg>
 );
+export const User = (p: P) => (
+  <Svg {...p}>
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </Svg>
+);
 export const ImageIcon = (p: P) => (
   <Svg {...p}>
     <rect x="3" y="3" width="18" height="18" rx="2" />

@@ -73,6 +73,8 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │           ├── layout.tsx     # Guard + Sidebar + Topbar shell; redirects to /admin/login when no token
 │   │           ├── page.tsx       # Dashboard /admin (Figma node 0:1) — stat cards, traffic chart, recent content, activity, quick actions
 │   │           ├── posts/page.tsx            # Content/Posts listing (Figma 98:370) — real GET /api/admin/posts; status tabs/category filter/search/bulk-delete
+│   │           ├── posts/new/page.tsx        # Add post (Figma 101:2/109:2/110:2) — PostEditor mode=create → POST /api/admin/posts
+│   │           ├── posts/[id]/edit/page.tsx  # Edit post — loads post, PostEditor mode=edit → PUT /api/admin/posts/:id
 │   │           ├── users/page.tsx           # Users list (Figma 23:793) — real GET /api/admin/users; filter/search/bulk, edit/activate/suspend/delete
 │   │           ├── users/new/page.tsx        # Add user (Figma 30:505) — POST /api/admin/users (name/email/role/password/avatar + invite); avatar via MediaPickerModal
 │   │           ├── users/[id]/edit/page.tsx  # Edit user — prefilled; PUT /api/admin/users/:id (name/email/avatar) + /role + /status
@@ -98,7 +100,8 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │       ├── Footer.tsx         # Dashboard footer (Figma 38:2) — copyright/version, links, system-status pill
 │   │       ├── user-ui.tsx        # Shared Users UI — role/status badges, Avatar (image src or initials), role↔label mapping
 │   │       ├── category-ui.tsx    # Shared Categories UI — status badge, colour swatches, colour dot, client slugify
-│   │       ├── MediaPickerModal.tsx # Pick an image from the media library (or paste a URL) — used by the user avatar field
+│   │       ├── MediaPickerModal.tsx # Pick an image from the media library (or paste a URL) — used by user avatar + post cover/gallery/og
+│   │       ├── PostEditor.tsx     # Shared add/edit post editor — 3 formats (article/gallery/video), media-library images, category/tags/status/SEO
 │   │       ├── media-ui.tsx       # Shared Media UI — mimeType→category, byte formatting, filename, thumbnail (img/gradient+icon)
 │   │       └── icons.tsx          # Inline SVG icon set (no icon-lib dependency)
 │   │
@@ -109,7 +112,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── categories.ts          # Categories admin API client — list/get/create/update/delete via authFetch (built)
 │   │   ├── media.ts               # Media admin API client — list/createFromUrl/uploadFile (presigned→PUT→record)/delete (built)
 │   │   ├── tags.ts                # Tags/Taxonomy admin API client — list/create/update/delete via authFetch (built)
-│   │   ├── posts.ts               # Posts admin API client — adminList (paginated) + delete via authFetch (built)
+│   │   ├── posts.ts               # Posts admin API client — adminList/get/create/update/delete + body(Tiptap doc)/YouTube-id helpers (built)
 │   │   ├── mongodb.ts             # Cached MongoClient for Next.js server components (public blog — planned)
 │   │   ├── mongoose.ts            # Cached Mongoose connection for Next.js server components
 │   │   ├── models/                # Mongoose models — identical copy of server/lib/models/
