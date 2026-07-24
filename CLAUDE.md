@@ -71,7 +71,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │       ├── login/page.tsx     # Sign-in (Figma node 22:2) — POST /api/auth/login, stores Bearer tokens, redirects to /admin
 │   │       └── (dashboard)/       # Gated route group — client auth guard lives in layout.tsx
 │   │           ├── layout.tsx     # Guard + Sidebar + Topbar shell; redirects to /admin/login when no token
-│   │           ├── page.tsx       # Dashboard /admin (Figma node 0:1) — stat cards, traffic chart, recent content, activity, quick actions
+│   │           ├── page.tsx       # Dashboard /admin (Figma node 0:1) — live data: stat cards (views/published/active users/pending comments), 30-day traffic AreaChart + mini-stats & sources (GET /api/admin/analytics), top categories by viewCount, recent content (posts), recent activity (posts+comments merged), media-storage usage, quick-action links. Composes analytics/posts/comments/users/categories/media clients; each fetch degrades gracefully (users is super-admin-only → dash)
 │   │           ├── posts/page.tsx            # Content/Posts listing (Figma 98:370) — real GET /api/admin/posts; status tabs/category filter/search/bulk-delete
 │   │           ├── posts/new/page.tsx        # Add post (Figma 101:2/109:2/110:2) — PostEditor mode=create → POST /api/admin/posts
 │   │           ├── posts/[id]/edit/page.tsx  # Edit post — loads post, PostEditor mode=edit → PUT /api/admin/posts/:id
