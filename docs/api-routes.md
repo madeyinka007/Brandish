@@ -111,9 +111,15 @@ All `/api/admin/*` routes require `users.role` in the JWT. The Lambda Authorizer
 | Method | Route | Min role | Description |
 |---|---|---|---|
 | `GET` | `/api/admin/posts` | `editor` | All posts — all statuses, all authors |
-| `POST` | `/api/admin/posts` | `editor` | Create post |
-| `PUT` | `/api/admin/posts/:id` | `editor` | Update post — triggers revalidation pipeline on publish |
+| `POST` | `/api/admin/posts` | `editor` | Create post. `authorId` optional — assign to any content-role user (defaults to the acting user) |
+| `PUT` | `/api/admin/posts/:id` | `editor` | Update post — triggers revalidation on publish; `authorId` reassigns the author |
 | `DELETE` | `/api/admin/posts/:id` | `editor` | Delete post + invalidate CloudFront path |
+| `GET` | `/api/admin/authors` | `editor` | The post-author pool — active users with a content role (`super-admin`/`editor`/`author`), minimal fields (`_id, name, avatar, role`). Editor-accessible (unlike the super-admin-only `/api/admin/users`) so the post editor can populate its author picker. |
+
+> **Author assignment.** A post's embedded `author` defaults to the acting editor, but `POST`/`PUT`
+> accept an `authorId` to assign it to another user — validated to have create-post access
+> (`super-admin`/`editor`/`author`); a `reader` or unknown id is rejected with `400 INVALID_AUTHOR`.
+> The slug-style denormalised `author.{_id,name,avatar}` snapshot is re-resolved on assignment.
 
 On `PUT` when `status` changes to `"published"`:
 1. Set `publishedAt: new Date()` if not already set

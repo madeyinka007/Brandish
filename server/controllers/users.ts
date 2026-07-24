@@ -9,6 +9,12 @@ export const listUsers = asyncHandler(async (req: Request, res: Response) => {
   res.status(200).json(users);
 });
 
+// Editor-accessible: the pool of users a post can be assigned to (minimal fields).
+export const listAuthors = asyncHandler(async (_req: Request, res: Response) => {
+  const authors = await usersService.listAuthors();
+  res.status(200).json(authors);
+});
+
 export const createUser = asyncHandler(async (req: Request, res: Response) => {
   const { name, email, password, role, avatar } = req.body ?? {};
   const user = await usersService.createUser({ name, email, password, role, avatar });

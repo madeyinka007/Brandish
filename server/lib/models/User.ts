@@ -7,6 +7,9 @@ export type Role = 'super-admin' | 'editor' | 'author' | 'reader';
 /** Every valid role — source of truth for schema enum and runtime validation. */
 export const ROLES: readonly Role[] = ['super-admin', 'editor', 'author', 'reader'];
 
+/** Roles that can author content (be assigned as a post's author). Excludes `reader`. */
+export const CONTENT_ROLES: readonly Role[] = ['super-admin', 'editor', 'author'];
+
 export interface UserDoc {
   _id: string;
   name: string;

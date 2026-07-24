@@ -85,6 +85,7 @@ export interface PostPayload {
   format: PostFormat;
   coverImage?: string;
   category: string;
+  authorId?: string;
   tags?: string[];
   media?: string[];
   videoId?: string | null;
