@@ -14,7 +14,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "seed:admin": "ts-node scripts/seedSuperAdmin.ts",
-    "seed:categories": "ts-node scripts/seedCategories.ts"
+    "seed:categories": "ts-node scripts/seedCategories.ts",
+    "seed:comments": "ts-node scripts/seedComments.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cloudfront": "^3.622.0",

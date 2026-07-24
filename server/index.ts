@@ -11,6 +11,8 @@ import categoriesRouter from './routes/categories';
 import adminCategoriesRouter from './routes/admin/categories';
 import tagsRouter from './routes/tags';
 import adminTagsRouter from './routes/admin/tags';
+import commentsRouter from './routes/comments';
+import adminCommentsRouter from './routes/admin/comments';
 import adminUploadUrlRouter from './routes/admin/upload-url';
 import adminMediaRouter from './routes/admin/media';
 import dotenv from 'dotenv'
@@ -32,11 +34,13 @@ app.use('/api/auth', authRouter);
 app.use('/api/posts', postsRouter);
 app.use('/api/categories', categoriesRouter);
 app.use('/api/tags', tagsRouter);
+app.use('/api/comments', commentsRouter);
 app.use('/api/admin/users', adminUsersRouter);
 app.use('/api/admin/authors', adminAuthorsRouter);
 app.use('/api/admin/posts', adminPostsRouter);
 app.use('/api/admin/categories', adminCategoriesRouter);
 app.use('/api/admin/tags', adminTagsRouter);
+app.use('/api/admin/comments', adminCommentsRouter);
 app.use('/api/admin/upload-url', adminUploadUrlRouter);
 app.use('/api/admin/media', adminMediaRouter);
 

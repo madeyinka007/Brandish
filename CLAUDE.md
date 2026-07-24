@@ -95,7 +95,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── CommentForm.tsx        # Includes reCAPTCHA v3
 │   │   ├── NewsletterBanner.tsx
 │   │   └── admin/                 # Admin dashboard UI (built)
-│   │       ├── Sidebar.tsx        # Dark nav (MAIN/TOOLS, active state, badges, user card, sign-out)
+│   │       ├── Sidebar.tsx        # Dark nav (MAIN/TOOLS, active state, user card, sign-out); live badges — Comments=pending count, Content=draft count (refetch on nav + BADGE_REFRESH_EVENT)
 │   │       ├── Topbar.tsx         # Search + New Post + notifications + avatar
 │   │       ├── Footer.tsx         # Dashboard footer (Figma 38:2) — copyright/version, links, system-status pill
 │   │       ├── user-ui.tsx        # Shared Users UI — role/status badges, Avatar (image src or initials), role↔label mapping
@@ -185,7 +185,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   ├── services/                   # Business logic — the only layer allowed to call domain models / getDb()
 │   │   ├── auth.ts                  # login/logout/refresh (rotation)/forgot/reset/change/verify — see docs/auth.md
 │   │   ├── posts.ts
-│   │   ├── comments.ts
+│   │   ├── comments.ts              # Mongoose Comment model; public createComment (strips HTML via sanitize-html, stores `pending`) + admin list/setStatus/delete moderation
 │   │   ├── users.ts
 │   │   ├── newsletter.ts
 │   │   ├── categories.ts
@@ -231,7 +231,8 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │
 │   ├── scripts/                    # One-off operational scripts (not part of the request path)
 │   │   ├── seedSuperAdmin.ts       # Bootstrap the first super-admin — `npm run seed:admin`; see docs/auth.md
-│   │   └── seedCategories.ts       # Seed the 10 launch categories — `npm run seed:categories`
+│   │   ├── seedCategories.ts       # Seed the 10 launch categories — `npm run seed:categories`
+│   │   └── seedComments.ts         # Seed ~14 demo comments across posts (mixed pending/approved/spam) — `npm run seed:comments`; idempotent by authorEmail
 │   │
 │   ├── __tests__/                 # Jest unit tests — mirrors routes/controllers/services/middleware/lib/scripts; DB/AWS clients mocked
 │   │   ├── bootstrap.test.ts
@@ -241,6 +242,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   │   ├── categories.test.ts
 │   │   │   ├── tags.test.ts
 │   │   │   ├── posts.test.ts
+│   │   │   ├── comments.test.ts
 │   │   │   ├── uploadUrl.test.ts
 │   │   │   └── media.test.ts
 │   │   ├── services/
@@ -249,11 +251,13 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   │   ├── categories.test.ts
 │   │   │   ├── tags.test.ts
 │   │   │   ├── posts.test.ts
+│   │   │   ├── comments.test.ts
 │   │   │   ├── uploadUrl.test.ts
 │   │   │   └── media.test.ts
 │   │   ├── scripts/
 │   │   │   ├── seedSuperAdmin.test.ts
-│   │   │   └── seedCategories.test.ts
+│   │   │   ├── seedCategories.test.ts
+│   │   │   └── seedComments.test.ts
 │   │   ├── middleware/
 │   │   │   ├── auth.test.ts
 │   │   │   ├── recaptcha.test.ts

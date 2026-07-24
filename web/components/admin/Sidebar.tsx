@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ComponentType, SVGProps } from "react";
 import { getStoredUser, logout } from "@/lib/auth";
+import { listComments } from "@/lib/comments";
+import { listPosts } from "@/lib/posts";
 import {
   BarChart,
   FileText,
@@ -26,15 +28,19 @@ type NavItem = {
   badge?: number;
 };
 
+// Badges are filled in at render time from live counts (see loadBadges below), keyed by href.
 const MAIN: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: LayoutGrid },
-  { label: "Content", href: "/admin/posts", icon: FileText, badge: 3 },
+  { label: "Content", href: "/admin/posts", icon: FileText },
   { label: "Category", href: "/admin/categories", icon: Folder },
   { label: "Taxonomy", href: "/admin/taxonomy", icon: ListTree },
   { label: "Users", href: "/admin/users", icon: Users },
   { label: "Media", href: "/admin/media", icon: ImageIcon },
-  { label: "Comments", href: "/admin/comments", icon: MessageSquare, badge: 12 }
+  { label: "Comments", href: "/admin/comments", icon: MessageSquare },
 ];
+
+/** Event admin pages fire after a mutation so the sidebar badges refresh without a full reload. */
+export const BADGE_REFRESH_EVENT = "admin:refresh-badges";
 
 const TOOLS: NavItem[] = [
   { label: "Campaign", href: "/admin/campaign", icon: Send },
@@ -56,6 +62,36 @@ export default function Sidebar() {
   const router = useRouter();
   const user = getStoredUser();
   const [signingOut, setSigningOut] = useState(false);
+  // Live counts: Comments = pending moderation queue, Content = draft posts.
+  const [badges, setBadges] = useState<{ comments: number; content: number }>({ comments: 0, content: 0 });
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadBadges() {
+      const [comments, posts] = await Promise.all([
+        listComments().catch(() => []),
+        listPosts().catch(() => []),
+      ]);
+      if (cancelled) return;
+      setBadges({
+        comments: comments.filter((c) => c.status === "pending").length,
+        content: posts.filter((p) => p.status === "draft").length,
+      });
+    }
+    void loadBadges();
+    const onRefresh = () => void loadBadges();
+    window.addEventListener(BADGE_REFRESH_EVENT, onRefresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(BADGE_REFRESH_EVENT, onRefresh);
+    };
+    // Re-run on navigation so counts stay fresh after actions on other pages.
+  }, [pathname]);
+
+  const badgeFor = (href: string): number | undefined => {
+    const n = href === "/admin/comments" ? badges.comments : href === "/admin/posts" ? badges.content : 0;
+    return n > 0 ? n : undefined;
+  };
 
   const isActive = (href: string) =>
     href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
@@ -69,6 +105,7 @@ export default function Sidebar() {
   const renderItem = (item: NavItem) => {
     const active = isActive(item.href);
     const Icon = item.icon;
+    const badge = item.badge ?? badgeFor(item.href);
     return (
       <Link
         key={item.href}
@@ -79,13 +116,13 @@ export default function Sidebar() {
       >
         <Icon width={18} height={18} />
         <span className="flex-1">{item.label}</span>
-        {item.badge != null && (
+        {badge != null && (
           <span
             className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${
               active ? "bg-white/20 text-white" : "bg-rose-500 text-white"
             }`}
           >
-            {item.badge}
+            {badge}
           </span>
         )}
       </Link>

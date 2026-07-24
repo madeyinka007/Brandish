@@ -177,9 +177,9 @@ reaches Mongoose.
 
 | Method | Route | Min role | Description |
 |---|---|---|---|
-| `GET` | `/api/admin/comments` | `editor` | Pending comment queue (`status: "pending"`) |
-| `PUT` | `/api/admin/comments/:id` | `editor` | Set status: `{ status: 'approved' \| 'rejected' }` |
-| `DELETE` | `/api/admin/comments/:id` | `editor` | Hard delete — used for confirmed spam |
+| `GET` | `/api/admin/comments` | `editor` | Moderation queue — all comments, newest first. Optional `?status=pending\|approved\|rejected` narrows to one queue; the admin UI derives its tab counts from the full set |
+| `PUT` | `/api/admin/comments/:id` | `editor` | Set status: `{ status: 'pending' \| 'approved' \| 'rejected' }` (approve, spam/reject, or unapprove back to pending) |
+| `DELETE` | `/api/admin/comments/:id` | `editor` | Hard delete — the "move to trash → delete permanently" path for confirmed spam |
 
 ### Subscribers
 
