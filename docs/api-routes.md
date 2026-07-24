@@ -243,20 +243,21 @@ SSRF safeguards required around it) and returns `422` if it doesn't resolve to a
 
 | Method | Route | Min role | Description |
 |---|---|---|---|
-| `GET` | `/api/admin/analytics` | `editor` | Aggregated snapshots. Query params: `?from=&to=&postId=&category=` |
+| `GET` | `/api/admin/analytics` | `editor` | Dashboard overview for a window. Query param: `?days=` (default 30, capped 365) |
 
-Reads from the native-driver `analytics` collection (see
-[`docs/data-model.md`](data-model.md)) — daily snapshots keyed by `(date, postId)` or
-`(date, category)`, with a site-wide row when both are `null`.
+Aggregates the native-driver `page_views` event log **in-process** (see
+`server/services/analytics.ts`) into everything the dashboard shows: total views + unique
+visitors + avg time-on-page + bounce rate (each with a delta vs the previous equal-length
+period), a daily views/unique time-series, traffic sources (from `referrer`), device split
+(from `userAgent`), top countries (from `ip` via a geo-IP stub — `geoFromIp`), and the top
+posts by views (joined to titles). `server/scripts/seedComments.ts`'s sibling
+`seedAnalytics.ts` (`npm run seed:analytics`) generates demo `page_views` for it.
 
-> **Open question:** nothing in this project currently documents *how* `analytics`
-> documents get created — there's no scheduled/batch job in
-> [`docs/aws-infrastructure.md`](aws-infrastructure.md) aggregating `page_views` into
-> daily snapshots (only `BlogApiFunction` and `AdminAuthorizerFunction` are defined
-> there). Building this route without also deciding on that aggregation job (a scheduled
-> Lambda via EventBridge is the obvious shape, given everything else here is already
-> serverless) means the route has nothing to actually read. Resolve this before or
-> alongside implementing the route, not by assuming the collection populates itself.
+> Deriving straight from `page_views` per request avoids needing a scheduled aggregation job
+> up front (the earlier open question). The pre-aggregated `analytics` daily-rollup collection
+> in [`docs/data-model.md`](data-model.md) remains the scale path: when per-request scans get
+> expensive, a scheduled Lambda rolls `page_views` into daily snapshots and this route reads
+> those instead — no API contract change.
 
 ### Audit log
 

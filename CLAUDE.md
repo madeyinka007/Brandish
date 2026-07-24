@@ -83,6 +83,8 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │           ├── categories/[id]/edit/page.tsx  # Edit category — prefilled; PUT /api/admin/categories/:id (slug stays immutable)
 │   │           ├── media/page.tsx                 # Media library (Figma 85:416) — GET /api/admin/media; upload (presigned S3), add-by-URL, delete, details panel
 │   │           ├── taxonomy/page.tsx              # Tags/Taxonomy (Figma 94:510) — full CRUD on /api/admin/tags (create/edit form + list + inline delete)
+│   │           ├── comments/page.tsx              # Comments moderation (Figma 114:486) — GET /api/admin/comments; stat cards, status tabs, bulk approve/spam/delete, per-comment approve/unapprove/spam/delete; fires BADGE_REFRESH_EVENT
+│   │           ├── analytics/page.tsx             # Analytics dashboard (Figma 135:494) — GET /api/admin/analytics?days=; stat cards+sparklines, SVG traffic area chart, sources donut, top posts, device bars, top countries; range selector + CSV export
 │   │           └── [section]/page.tsx  # Placeholder for the remaining sections (/admin/posts, /admin/comments, …)
 │   │   # ([category]/ and search/ public-blog pages are planned; their empty placeholder files were removed during the admin build)
 │   │
@@ -104,6 +106,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │       ├── PostEditor.tsx     # Shared add/edit post editor — 3 formats (article/gallery/video), media-library images, category/tags/status/SEO
 │   │       ├── RichTextEditor.tsx # Tiptap rich-text editor for posts.body — toolbar (bold/italic/underline/H2-3/lists/quote/code/link/image); getJSON() == posts.body; inline images from media library
 │   │       ├── media-ui.tsx       # Shared Media UI — mimeType→category, byte formatting, filename, thumbnail (img/gradient+icon)
+│   │       ├── charts.tsx         # Dependency-free inline-SVG charts (Sparkline, AreaChart, Donut) for the analytics dashboard
 │   │       └── icons.tsx          # Inline SVG icon set (no icon-lib dependency)
 │   │
 │   ├── lib/
@@ -114,6 +117,8 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── media.ts               # Media admin API client — list/createFromUrl/uploadFile (presigned→PUT→record)/delete (built)
 │   │   ├── tags.ts                # Tags/Taxonomy admin API client — list/create/update/delete via authFetch (built)
 │   │   ├── posts.ts               # Posts admin API client — adminList/get/create/update/delete + body(Tiptap doc)/YouTube-id helpers (built)
+│   │   ├── comments.ts            # Comments admin API client — list/moderate(setStatus)/delete via authFetch (built)
+│   │   ├── analytics.ts           # Analytics admin API client — getAnalytics(days) → overview (summary/timeseries/sources/devices/topPosts/topCountries) (built)
 │   │   ├── mongodb.ts             # Cached MongoClient for Next.js server components (public blog — planned)
 │   │   ├── mongoose.ts            # Cached Mongoose connection for Next.js server components
 │   │   ├── models/                # Mongoose models — identical copy of server/lib/models/
@@ -193,7 +198,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── uploadUrl.ts             # S3 presigned URL only — no DB access at all
 │   │   ├── media.ts                # Native-driver — no BaseModel; calls getDb() directly (see docs/development.md)
 │   │   ├── search.ts               # Native-driver — no BaseModel; calls getDb() directly
-│   │   ├── analytics.ts            # Native-driver — no BaseModel; calls getDb() directly
+│   │   ├── analytics.ts            # Native-driver — aggregates page_views in-process: views/unique/avg-time/bounce (+prev-period deltas), daily time-series, sources (referrer), devices (UA), countries (geoFromIp stub), top posts. See docs/api-routes.md
 │   │   └── auditLog.ts             # Native-driver — no BaseModel; calls getDb() directly
 │   ├── middleware/
 │   │   ├── auth.ts                # requireAuth (Bearer access-token verify) + requireRole
@@ -232,7 +237,8 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   ├── scripts/                    # One-off operational scripts (not part of the request path)
 │   │   ├── seedSuperAdmin.ts       # Bootstrap the first super-admin — `npm run seed:admin`; see docs/auth.md
 │   │   ├── seedCategories.ts       # Seed the 10 launch categories — `npm run seed:categories`
-│   │   └── seedComments.ts         # Seed ~14 demo comments across posts (mixed pending/approved/spam) — `npm run seed:comments`; idempotent by authorEmail
+│   │   ├── seedComments.ts         # Seed ~14 demo comments across posts (mixed pending/approved/spam) — `npm run seed:comments`; idempotent by authorEmail
+│   │   └── seedAnalytics.ts        # Seed demo page_views (visitor pool → realistic unique/bounce) + sync posts.viewCount — `npm run seed:analytics`; idempotent by `_demo` flag
 │   │
 │   ├── __tests__/                 # Jest unit tests — mirrors routes/controllers/services/middleware/lib/scripts; DB/AWS clients mocked
 │   │   ├── bootstrap.test.ts
@@ -243,6 +249,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   │   ├── tags.test.ts
 │   │   │   ├── posts.test.ts
 │   │   │   ├── comments.test.ts
+│   │   │   ├── analytics.test.ts
 │   │   │   ├── uploadUrl.test.ts
 │   │   │   └── media.test.ts
 │   │   ├── services/
@@ -252,12 +259,14 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   │   ├── tags.test.ts
 │   │   │   ├── posts.test.ts
 │   │   │   ├── comments.test.ts
+│   │   │   ├── analytics.test.ts
 │   │   │   ├── uploadUrl.test.ts
 │   │   │   └── media.test.ts
 │   │   ├── scripts/
 │   │   │   ├── seedSuperAdmin.test.ts
 │   │   │   ├── seedCategories.test.ts
-│   │   │   └── seedComments.test.ts
+│   │   │   ├── seedComments.test.ts
+│   │   │   └── seedAnalytics.test.ts
 │   │   ├── middleware/
 │   │   │   ├── auth.test.ts
 │   │   │   ├── recaptcha.test.ts

@@ -13,6 +13,7 @@ import tagsRouter from './routes/tags';
 import adminTagsRouter from './routes/admin/tags';
 import commentsRouter from './routes/comments';
 import adminCommentsRouter from './routes/admin/comments';
+import adminAnalyticsRouter from './routes/admin/analytics';
 import adminUploadUrlRouter from './routes/admin/upload-url';
 import adminMediaRouter from './routes/admin/media';
 import dotenv from 'dotenv'
@@ -41,6 +42,7 @@ app.use('/api/admin/posts', adminPostsRouter);
 app.use('/api/admin/categories', adminCategoriesRouter);
 app.use('/api/admin/tags', adminTagsRouter);
 app.use('/api/admin/comments', adminCommentsRouter);
+app.use('/api/admin/analytics', adminAnalyticsRouter);
 app.use('/api/admin/upload-url', adminUploadUrlRouter);
 app.use('/api/admin/media', adminMediaRouter);
 

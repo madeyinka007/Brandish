@@ -322,13 +322,18 @@ time on the admin analytics dashboard.
   _id:        ObjectId,
   postId:     ObjectId,           // ref → posts._id
   ip:         string,
-  userAgent:  string,
-  referrer:   string | null,
+  userAgent:  string,             // parsed into a device class by the analytics service
+  referrer:   string | null,      // categorised into a traffic source (organic/direct/social/referral)
+  dwellSec:   number,             // time-on-page in seconds (captured on unload); powers avg-time-on-page
   viewedAt:   Date,
 }
 ```
 
 **Index:** `{ postId: 1, viewedAt: -1 }` — per-post view history.
+
+The admin analytics dashboard (`GET /api/admin/analytics`) aggregates this log in-process for
+views/unique-visitors trends, traffic sources, device split, top countries (geo-IP), top posts,
+bounce rate and avg time on page. `server/scripts/seedAnalytics.ts` seeds demo events for it.
 
 ---
 
