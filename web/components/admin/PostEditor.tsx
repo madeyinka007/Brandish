@@ -15,7 +15,9 @@ import {
 } from "@/lib/posts";
 import { listCategories, type CategoryRecord } from "@/lib/categories";
 import { listTags, type TagRecord } from "@/lib/tags";
+import { listAuthors, type AuthorSummary } from "@/lib/users";
 import { getStoredUser } from "@/lib/auth";
+import { ROLE_META } from "@/components/admin/user-ui";
 import { ColorDot, slugify } from "@/components/admin/category-ui";
 import MediaPickerModal from "@/components/admin/MediaPickerModal";
 import RichTextEditor from "@/components/admin/RichTextEditor";
@@ -69,11 +71,14 @@ export default function PostEditor({ mode, initial }: { mode: "create" | "edit";
 
   const [cats, setCats] = useState<CategoryRecord[]>([]);
   const [allTags, setAllTags] = useState<TagRecord[]>([]);
+  const [authors, setAuthors] = useState<AuthorSummary[]>([]);
+  const [authorId, setAuthorId] = useState(initial?.author?._id ?? getStoredUser()?._id ?? "");
   const [pickerTarget, setPickerTarget] = useState<null | "cover" | "gallery" | "og">(null);
 
   useEffect(() => {
     listCategories().then(setCats).catch(() => {});
     listTags().then(setAllTags).catch(() => {});
+    listAuthors().then(setAuthors).catch(() => {});
   }, []);
 
   const authorName = initial?.author?.name ?? getStoredUser()?.name ?? "You";
@@ -106,6 +111,7 @@ export default function PostEditor({ mode, initial }: { mode: "create" | "edit";
         format,
         coverImage,
         category,
+        authorId: authorId || undefined,
         tags,
         media: format === "gallery" ? media : [],
         videoId: format === "video" ? videoId : null,
@@ -282,10 +288,24 @@ export default function PostEditor({ mode, initial }: { mode: "create" | "edit";
               )}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">Author</label>
-                <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                  <UserIcon width={15} height={15} /> {authorName}
-                </div>
-                <p className="mt-1 text-xs text-slate-400">Set to the signed-in editor; not reassignable here.</p>
+                {authors.length > 0 ? (
+                  <select value={authorId} onChange={(e) => setAuthorId(e.target.value)} className={inputCls}>
+                    {/* keep the current author selectable even if not in the fetched pool */}
+                    {authorId && !authors.some((a) => a._id === authorId) && (
+                      <option value={authorId}>{authorName}</option>
+                    )}
+                    {authors.map((a) => (
+                      <option key={a._id} value={a._id}>
+                        {a.name} · {ROLE_META[a.role]?.label ?? a.role}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                    <UserIcon width={15} height={15} /> {authorName}
+                  </div>
+                )}
+                <p className="mt-1 text-xs text-slate-400">Assign to any teammate with create-post access.</p>
               </div>
             </div>
           </section>

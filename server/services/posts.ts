@@ -2,7 +2,7 @@ import { AppError } from '../lib/errors';
 import { uniqueSlug } from '../lib/slug';
 import { logAudit } from '../lib/auditLog';
 import { revalidatePost, purgePost } from '../lib/revalidate';
-import { getUserModel } from '../lib/models/User';
+import { getUserModel, CONTENT_ROLES } from '../lib/models/User';
 import {
   getPostModel,
   POST_FORMATS,
@@ -91,11 +91,23 @@ export async function getPublishedBySlug(slug: string): Promise<PostDoc> {
 
 // ---- Mutations ----
 
-/** Resolves the acting user into the denormalised author snapshot embedded on the post. */
-async function resolveAuthor(actorId: string): Promise<PostDoc['author']> {
+/**
+ * Resolves the embedded author snapshot. Defaults to the acting user, but an editor can assign
+ * the post to a different user via `authorId` — that user must exist and have a content role
+ * (super-admin/editor/author), so a post can't be attributed to a reader or a ghost id.
+ */
+async function resolveAuthor(actorId: string, authorId?: unknown): Promise<PostDoc['author']> {
+  const explicit = isNonEmptyString(authorId) && authorId !== actorId ? authorId : null;
   const users = await getUserModel();
-  const user = await users.findById(actorId);
-  if (!user) throw new AppError(404, 'AUTHOR_NOT_FOUND', 'Authenticated user no longer exists');
+  const user = await users.findById(explicit ?? actorId);
+  if (!user) {
+    throw explicit
+      ? new AppError(400, 'INVALID_AUTHOR', 'The selected author does not exist')
+      : new AppError(404, 'AUTHOR_NOT_FOUND', 'Authenticated user no longer exists');
+  }
+  if (explicit && !(CONTENT_ROLES as readonly string[]).includes(user.role)) {
+    throw new AppError(400, 'INVALID_AUTHOR', 'The selected author does not have create-post access');
+  }
   return { _id: user._id, name: user.name, avatar: user.avatar };
 }
 
@@ -131,7 +143,7 @@ export async function createPost(data: Record<string, unknown>, actorId: string)
   const slug = await uniqueSlug(data.title);
   if (!slug) throw new AppError(400, 'INVALID_POST_INPUT', 'title must contain at least one letter or number');
 
-  const author = await resolveAuthor(actorId);
+  const author = await resolveAuthor(actorId, data.authorId);
 
   const publishedAt =
     data.publishedAt !== undefined ? parseDate(data.publishedAt) : status === 'published' ? new Date() : null;
@@ -212,6 +224,12 @@ export async function updatePost(
   if (data.status !== undefined) {
     if (!isValidStatus(data.status)) throw new AppError(400, 'INVALID_POST_INPUT', `status must be one of: ${POST_STATUSES.join(', ')}`);
     update.status = data.status;
+  }
+
+  // Reassign the author (editor picks a different content-capable user). Only when a non-empty
+  // authorId is supplied; the embedded snapshot is re-resolved and validated.
+  if (isNonEmptyString(data.authorId)) {
+    update.author = await resolveAuthor(actorId, data.authorId);
   }
 
   // Slug is editable on posts (unlike categories) — but always regenerated server-side and

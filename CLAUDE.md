@@ -160,6 +160,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │       ├── posts.ts
 │   │       ├── comments.ts
 │   │       ├── users.ts
+│   │       ├── authors.ts          # GET /api/admin/authors — post-author pool (content-role users); editor+ (uses usersController.listAuthors)
 │   │       ├── subscribers.ts
 │   │       ├── categories.ts
 │   │       ├── tags.ts

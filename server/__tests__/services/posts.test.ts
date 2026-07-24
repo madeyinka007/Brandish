@@ -6,7 +6,10 @@ jest.mock('../../lib/models/Post', () => {
   const actual = jest.requireActual('../../lib/models/Post');
   return { ...actual, getPostModel: jest.fn() };
 });
-jest.mock('../../lib/models/User', () => ({ getUserModel: jest.fn() }));
+jest.mock('../../lib/models/User', () => ({
+  getUserModel: jest.fn(),
+  CONTENT_ROLES: ['super-admin', 'editor', 'author'],
+}));
 jest.mock('../../lib/revalidate', () => ({
   revalidatePost: jest.fn().mockResolvedValue(undefined),
   purgePost: jest.fn().mockResolvedValue(undefined),
@@ -75,6 +78,28 @@ describe('createPost', () => {
     expect(logAudit).toHaveBeenCalledWith('post.publish', 'post', 'p1', 'u1', expect.any(Object));
   });
 
+  test('assigns a different author when authorId is a content-capable user', async () => {
+    userModel.findById.mockImplementation(async (id: string) =>
+      id === 'u2' ? { _id: 'u2', name: 'Bob', avatar: '', role: 'author' } : { _id: 'u1', name: 'Jane', avatar: '', role: 'editor' },
+    );
+    postModel.create.mockImplementation(async (doc: any) => ({ ...doc, _id: 'p1' }));
+
+    await posts.createPost({ title: 'X', category: 'money', authorId: 'u2' }, 'u1');
+
+    expect(postModel.create.mock.calls[0][0].author).toEqual({ _id: 'u2', name: 'Bob', avatar: '' });
+  });
+
+  test('400 INVALID_AUTHOR when the assigned author lacks content access (reader)', async () => {
+    userModel.findById.mockImplementation(async (id: string) =>
+      id === 'r1' ? { _id: 'r1', name: 'Reader', avatar: '', role: 'reader' } : { _id: 'u1', name: 'Jane', avatar: '', role: 'editor' },
+    );
+    await expect(posts.createPost({ title: 'X', category: 'money', authorId: 'r1' }, 'u1')).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'INVALID_AUTHOR',
+    });
+    expect(postModel.create).not.toHaveBeenCalled();
+  });
+
   test('422 when format is "gallery" but media is empty — never reaches create', async () => {
     await expect(posts.createPost({ title: 'G', category: 'money', format: 'gallery' }, 'u1')).rejects.toMatchObject({
       statusCode: 422,
@@ -141,6 +166,18 @@ describe('updatePost', () => {
     expect(postModel.updateById.mock.calls[0][1].publishedAt).toBeInstanceOf(Date);
     expect(revalidatePost).toHaveBeenCalled();
     expect(logAudit).toHaveBeenCalledWith('post.publish', 'post', 'p1', 'u1', expect.any(Object));
+  });
+
+  test('reassigns the author when a valid authorId is supplied', async () => {
+    postModel.findById.mockResolvedValue({ ...draft });
+    postModel.updateById.mockResolvedValue({ ...draft });
+    userModel.findById.mockImplementation(async (id: string) =>
+      id === 'u2' ? { _id: 'u2', name: 'Bob', avatar: '', role: 'author' } : { _id: 'u1', name: 'Jane', avatar: '', role: 'editor' },
+    );
+
+    await posts.updatePost('p1', { authorId: 'u2' }, 'u1');
+
+    expect(postModel.updateById.mock.calls[0][1].author).toEqual({ _id: 'u2', name: 'Bob', avatar: '' });
   });
 
   test('422 when switching to gallery without supplying media (effective shape has none)', async () => {

@@ -66,6 +66,23 @@ describe('listUsers', () => {
   });
 });
 
+describe('listAuthors', () => {
+  test('queries active content-role users and returns only minimal fields', async () => {
+    model.find.mockResolvedValue([makeUserDoc({ _id: 'a1', name: 'Ada', avatar: 'x', role: 'author' })]);
+
+    const result = await users.listAuthors();
+
+    // filter: content roles + active
+    const [filter, opts] = model.find.mock.calls[0];
+    expect(filter).toEqual({ role: { $in: ['super-admin', 'editor', 'author'] }, active: true });
+    expect(opts).toMatchObject({ sort: 'name' });
+    // minimal shape only — no email/tokens
+    expect(result).toEqual([{ _id: 'a1', name: 'Ada', avatar: 'x', role: 'author' }]);
+    expect(result[0]).not.toHaveProperty('email');
+    for (const field of SENSITIVE) expect(result[0]).not.toHaveProperty(field);
+  });
+});
+
 describe('createUser', () => {
   test('hashes the password (never stores plaintext) and returns a sanitized user', async () => {
     model.create.mockResolvedValue(makeUserDoc());

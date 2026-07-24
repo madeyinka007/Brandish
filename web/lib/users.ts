@@ -43,6 +43,18 @@ export async function listUsers(): Promise<UserRecord[]> {
   return handle<UserRecord[]>(await authFetch("/api/admin/users?limit=100"));
 }
 
+export interface AuthorSummary {
+  _id: string;
+  name: string;
+  avatar: string;
+  role: Role;
+}
+
+/** The pool of users a post can be assigned to (content roles, minimal fields). editor+ endpoint. */
+export async function listAuthors(): Promise<AuthorSummary[]> {
+  return handle<AuthorSummary[]>(await authFetch("/api/admin/authors"));
+}
+
 /** Single user by id. The API has no GET /:id, so we read it from the list (small dataset). */
 export async function getUser(id: string): Promise<UserRecord | null> {
   const users = await listUsers();

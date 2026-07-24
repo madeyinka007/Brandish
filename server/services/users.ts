@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { AppError } from '../lib/errors';
 import { hashPassword } from '../lib/password';
 import { sendEmail } from '../lib/ses';
-import { getUserModel, sanitizeUser, ROLES, type PublicUser, type Role, type UserDoc } from '../lib/models/User';
+import { getUserModel, sanitizeUser, ROLES, CONTENT_ROLES, type PublicUser, type Role, type UserDoc } from '../lib/models/User';
 import { isEmail, isNonEmptyString, isStrongPassword } from '../lib/validation';
 
 // Every read/write below returns users through `sanitizeUser` — the single, consistent
@@ -25,6 +25,27 @@ export async function listUsers(page?: number, limit?: number): Promise<PublicUs
   const users = await getUserModel();
   const docs = await users.find({}, { page, limit, sort: '-createdAt' });
   return docs.map(sanitizeUser);
+}
+
+export interface AuthorSummary {
+  _id: string;
+  name: string;
+  avatar: string;
+  role: Role;
+}
+
+/**
+ * Active users who can author content (role in CONTENT_ROLES) — the pool a post can be
+ * assigned to. Returns MINIMAL fields only (no email/tokens): this is exposed to editors (not
+ * just super-admins) so the post editor can populate its author picker.
+ */
+export async function listAuthors(): Promise<AuthorSummary[]> {
+  const users = await getUserModel();
+  const docs = await users.find(
+    { role: { $in: CONTENT_ROLES as unknown as Role[] }, active: true },
+    { sort: 'name', limit: 200 },
+  );
+  return docs.map((u) => ({ _id: String(u._id), name: u.name, avatar: u.avatar ?? '', role: u.role }));
 }
 
 export async function createUser(input: CreateUserInput): Promise<PublicUser> {
