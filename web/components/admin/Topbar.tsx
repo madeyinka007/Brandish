@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
+import { useRef } from "react";
 import { getStoredUser } from "@/lib/auth";
-import { Bell, Plus } from "./icons";
-import GlobalSearch from "./GlobalSearch";
+import { Bell, Search } from "./icons";
+import GlobalSearch, { type GlobalSearchHandle } from "./GlobalSearch";
 
 function initials(name: string): string {
   return name
@@ -16,18 +16,20 @@ function initials(name: string): string {
 
 export default function Topbar() {
   const user = getStoredUser();
+  const searchRef = useRef<GlobalSearchHandle>(null);
 
   return (
     <header className="flex items-center gap-4 border-b border-slate-200 bg-white px-6 py-3">
-      <GlobalSearch />
+      <GlobalSearch ref={searchRef} />
 
-      <Link
-        href="/admin/posts"
+      <button
+        type="button"
+        onClick={() => searchRef.current?.focus()}
         className="flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark"
       >
-        <Plus width={16} height={16} />
-        New Post
-      </Link>
+        <Search width={16} height={16} />
+        Search
+      </button>
 
       <button
         aria-label="Notifications"

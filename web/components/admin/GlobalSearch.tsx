@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ComponentType, SVGProps } from "react";
 import { listPosts, type PostRecord } from "@/lib/posts";
@@ -33,7 +33,11 @@ interface Data {
 }
 const EMPTY: Data = { posts: [], users: [], categories: [], tags: [], media: [] };
 
-export default function GlobalSearch() {
+export interface GlobalSearchHandle {
+  focus: () => void;
+}
+
+const GlobalSearch = forwardRef<GlobalSearchHandle>(function GlobalSearch(_props, ref) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -60,6 +64,15 @@ export default function GlobalSearch() {
     setLoaded(true);
     setLoading(false);
   }
+
+  // Let the Topbar "Search" button open + focus this input.
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      setOpen(true);
+      void ensureLoaded();
+      inputRef.current?.focus();
+    },
+  }));
 
   const results = useMemo<Result[]>(() => {
     const q = query.trim().toLowerCase();
@@ -209,4 +222,6 @@ export default function GlobalSearch() {
       )}
     </div>
   );
-}
+});
+
+export default GlobalSearch;
