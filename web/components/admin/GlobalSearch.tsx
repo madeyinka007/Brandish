@@ -67,32 +67,36 @@ export default function GlobalSearch() {
     const { posts, users, categories, tags, media } = data.current;
     const out: Result[] = [];
 
+    // Each result lands on its listing page pre-filtered to the item (via ?q=), so you can pick
+    // the next action there (edit, delete, view, …) rather than jumping straight into an editor.
+    const listHref = (base: string, term: string) => `${base}?q=${encodeURIComponent(term)}`;
+
     posts
       .filter((p) => p.title.toLowerCase().includes(q) || p.category.toLowerCase().includes(q))
       .slice(0, PER_GROUP)
       .forEach((p) =>
-        out.push({ id: p._id, group: "Posts", label: p.title, sub: p.status, href: `/admin/posts/${p._id}/edit`, icon: FileText }),
+        out.push({ id: p._id, group: "Posts", label: p.title, sub: p.status, href: listHref("/admin/posts", p.title), icon: FileText }),
       );
 
     users
       .filter((u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
       .slice(0, PER_GROUP)
-      .forEach((u) => out.push({ id: u._id, group: "Users", label: u.name, sub: u.email, href: `/admin/users/${u._id}/edit`, icon: Users }));
+      .forEach((u) => out.push({ id: u._id, group: "Users", label: u.name, sub: u.email, href: listHref("/admin/users", u.name), icon: Users }));
 
     categories
       .filter((c) => c.name.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q))
       .slice(0, PER_GROUP)
-      .forEach((c) => out.push({ id: c._id, group: "Categories", label: c.name, sub: `/${c.slug}`, href: `/admin/categories/${c._id}/edit`, icon: Folder }));
+      .forEach((c) => out.push({ id: c._id, group: "Categories", label: c.name, sub: `/${c.slug}`, href: listHref("/admin/categories", c.name), icon: Folder }));
 
     tags
       .filter((t) => t.name.toLowerCase().includes(q) || t.slug.toLowerCase().includes(q))
       .slice(0, PER_GROUP)
-      .forEach((t) => out.push({ id: t._id, group: "Tags", label: t.name, sub: `${t.postCount} post${t.postCount === 1 ? "" : "s"}`, href: `/admin/taxonomy`, icon: Tag }));
+      .forEach((t) => out.push({ id: t._id, group: "Tags", label: t.name, sub: `${t.postCount} post${t.postCount === 1 ? "" : "s"}`, href: listHref("/admin/taxonomy", t.name), icon: Tag }));
 
     media
       .filter((m) => (m.filename ?? "").toLowerCase().includes(q))
       .slice(0, PER_GROUP)
-      .forEach((m) => out.push({ id: m._id, group: "Media", label: m.filename ?? "Untitled", sub: m.mimeType ?? "file", href: `/admin/media`, icon: ImageIcon }));
+      .forEach((m) => out.push({ id: m._id, group: "Media", label: m.filename ?? "Untitled", sub: m.mimeType ?? "file", href: listHref("/admin/media", m.filename ?? ""), icon: ImageIcon }));
 
     return out;
   }, [query, loaded]);

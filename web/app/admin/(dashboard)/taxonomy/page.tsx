@@ -60,6 +60,12 @@ export default function TaxonomyPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [query, setQuery] = useState("");
+
+  // Seed the filter from ?q= (e.g. arriving from global search) so the item is pre-filtered.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q) setQuery(q);
+  }, []);
   const [tab, setTab] = useState<"all" | "used" | "unused">("all");
   const [sort, setSort] = useState<"name" | "newest" | "posts">("name");
   const [page, setPage] = useState(1);

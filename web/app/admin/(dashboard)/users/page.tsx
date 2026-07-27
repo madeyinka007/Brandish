@@ -77,6 +77,12 @@ export default function UsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("all");
   const [query, setQuery] = useState("");
+
+  // Seed the filter from ?q= (e.g. arriving from global search) so the item is pre-filtered.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q) setQuery(q);
+  }, []);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [menuFor, setMenuFor] = useState<string | null>(null);
