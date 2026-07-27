@@ -99,7 +99,8 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── NewsletterBanner.tsx
 │   │   └── admin/                 # Admin dashboard UI (built)
 │   │       ├── Sidebar.tsx        # Dark nav (MAIN/TOOLS, active state, user card, sign-out); live badges — Comments=pending count, Content=draft count (refetch on nav + BADGE_REFRESH_EVENT)
-│   │       ├── Topbar.tsx         # Search + New Post + notifications + avatar
+│   │       ├── Topbar.tsx         # GlobalSearch + New Post + notifications + avatar
+│   │       ├── GlobalSearch.tsx   # Functional shell search — lazy-loads posts/users/categories/tags/media once, filters client-side, grouped dropdown + keyboard nav (↑/↓/Enter/Esc); each result links to its admin page
 │   │       ├── Footer.tsx         # Dashboard footer (Figma 38:2) — copyright/version, links, system-status pill
 │   │       ├── user-ui.tsx        # Shared Users UI — role/status badges, Avatar (image src or initials), role↔label mapping
 │   │       ├── category-ui.tsx    # Shared Categories UI — status badge, colour swatches, colour dot, client slugify

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { getStoredUser } from "@/lib/auth";
-import { Bell, Plus, Search } from "./icons";
+import { Bell, Plus } from "./icons";
+import GlobalSearch from "./GlobalSearch";
 
 function initials(name: string): string {
   return name
@@ -18,14 +19,7 @@ export default function Topbar() {
 
   return (
     <header className="flex items-center gap-4 border-b border-slate-200 bg-white px-6 py-3">
-      <div className="relative flex-1">
-        <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input
-          type="search"
-          placeholder="Search content, users, media…"
-          className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-10 pr-3 text-sm outline-none transition focus:border-brand focus:bg-white focus:ring-2 focus:ring-brand/20"
-        />
-      </div>
+      <GlobalSearch />
 
       <Link
         href="/admin/posts"
