@@ -8,6 +8,8 @@ const router = Router();
 router.post('/login', authController.login);
 router.post('/logout', authController.logout);
 router.post('/refresh', authController.refresh);
+router.get('/me', requireAuth, authController.me);
+router.put('/me', requireAuth, authController.updateProfile);
 router.post('/forgot-password', authController.forgotPassword);
 router.post('/reset-password', authController.resetPassword);
 router.post('/change-password', requireAuth, authController.changePassword);

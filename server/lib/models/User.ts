@@ -12,7 +12,10 @@ export const CONTENT_ROLES: readonly Role[] = ['super-admin', 'editor', 'author'
 
 export interface UserDoc {
   _id: string;
-  name: string;
+  name: string; // display name / author byline
+  firstName: string;
+  lastName: string;
+  bio: string;
   email: string;
   passwordHash: string;
   role: Role;
@@ -63,6 +66,9 @@ export function getUserModel(): Promise<UserModel> {
       'User',
       {
         name: { type: String, required: true },
+        firstName: { type: String, default: '' },
+        lastName: { type: String, default: '' },
+        bio: { type: String, default: '' },
         email: { type: String, required: true },
         passwordHash: { type: String, required: true },
         role: { type: String, enum: ROLES as unknown as string[], required: true },

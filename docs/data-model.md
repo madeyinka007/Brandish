@@ -13,7 +13,7 @@ MongoDB Atlas collections are split across two access patterns, chosen per colle
 | Access pattern | Collections | Why |
 |---|---|---|
 | **Mongoose** (`web/lib/mongoose.ts`, `server/lib/mongoose.ts`) | `users`, `posts`, `categories`, `tags`, `comments`, `subscribers` | Editorial/relational content with stable shapes — schema validation, defaults, and indexes are declared once on the model and enforced on every write. |
-| **Native MongoDB driver** (`web/lib/mongodb.ts`, `server/lib/mongodb.ts`, via `getDb()`) | `media`, `page_views`, `analytics`, `search_logs`, `audit_log`, `notifications` | High-volume or write-heavy/append-only data (media metadata, raw event logs, analytics snapshots) where Mongoose's validation and change-tracking overhead isn't needed. |
+| **Native MongoDB driver** (`web/lib/mongodb.ts`, `server/lib/mongodb.ts`, via `getDb()`) | `media`, `page_views`, `analytics`, `search_logs`, `audit_log`, `notifications`, `settings` | High-volume or write-heavy/append-only data (media metadata, raw event logs, analytics snapshots) where Mongoose's validation and change-tracking overhead isn't needed — plus the low-volume singleton `settings` document, a simple free-form config blob that doesn't warrant a model. |
 
 Mongoose models live in `web/lib/models/*.ts`, duplicated identically in
 `server/lib/models/*.ts` — same convention as the connection helpers (see
@@ -194,7 +194,10 @@ denormalised-slug convention as `posts.category`); deleting a tag does **not** c
 ```ts
 {
   _id:                    ObjectId,
-  name:                   string,
+  name:                   string,           // display name / author byline
+  firstName:              string,           // profile (Settings › Profile) — default ''
+  lastName:               string,           // profile — default ''
+  bio:                    string,           // profile — default ''
   email:                  string,           // unique index
   passwordHash:           string,           // bcrypt hash — NEVER returned in API responses
   role:                   'super-admin' | 'editor' | 'author' | 'reader'
@@ -420,6 +423,78 @@ In-app notifications for admin users (e.g. "new comment pending", "newsletter se
 ```
 
 **Index:** `{ recipientId: 1, read: 1, createdAt: -1 }`.
+
+---
+
+### `settings`
+
+**Singleton** — exactly one document holds the whole site's configuration, addressed by a
+fixed `_id: 'site'`. Read on load (cached at module scope, like the DB clients), patched on
+save. Holds *behaviour and presentation only* — **never secrets** (Mongo URI, JWT secret,
+SES/AWS keys, the reCAPTCHA *secret* stay in SSM Parameter Store; see
+[`docs/aws-infrastructure.md`](aws-infrastructure.md)).
+
+Sections mirror the admin **Settings** page tabs (Figma 188:444) — **Site**, **Appearance**,
+**Reading**, **Comments**. The page's fifth tab, **Profile**, is *not* stored here: it edits the
+signed-in user's own `users` record via `/api/auth/me` (see below).
+
+```ts
+{
+  _id:      'site',                 // fixed key — guarantees a single settings document
+  site: {
+    title:             string,      // 'Brandish'
+    logoUrl:           string,      // media URL (picked from the Media library)
+    tagline:           string,
+    description:       string,
+    language:          string,      // BCP-47, e.g. 'en-US'
+    timezone:          string,      // IANA, e.g. 'Africa/Lagos'
+    postsPerPage:      number,      // 1–100
+    showAuthorBylines: boolean,
+    enableComments:    boolean,     // site-wide comments master switch
+    enableRss:         boolean,
+    maintenanceMode:   boolean,     // when true, the public blog serves a maintenance page
+  },
+  appearance: {
+    theme:           'light' | 'dark' | 'auto',  // display mode — site default (see the settings & theme flow)
+    accentColor:     string,        // #RRGGBB — links, buttons, highlights
+    headingFont:     string,
+    bodyFont:        string,
+    contentWidth:    'narrow' | 'standard' | 'wide',
+    showCoverImages: boolean,
+    stickyNav:       boolean,
+  },
+  reading: {
+    postListsShow:    'excerpt' | 'full',
+    excerptWords:     number,       // 10–300
+    rssItems:         number,       // 1–100
+    showReadingTime:  boolean,
+    showAuthorBio:    boolean,
+    showRelatedPosts: boolean,
+  },
+  comments: {
+    whoCanComment:     'anyone' | 'subscribers' | 'closed',
+    nestingDepth:      number,      // 1–10 — reply threading depth
+    holdForModeration: boolean,     // true = every comment starts 'pending' (current default)
+    autoCloseComments: boolean,     // close threads on older posts
+    emailOnNewComment: boolean,     // moderation alert to the admin
+    requireRecaptcha:  boolean,
+  },
+  updatedAt: Date | null,
+  updatedBy: string | null,         // users._id of the last editor
+}
+```
+
+**Index:** none needed — the fixed `_id` makes every read a single-document `findOne({ _id: 'site' })`.
+
+Every field is clamped/enum-guarded on write (`server/services/settings.ts`), and reads merge the
+stored document over a code-defined `DEFAULT_SETTINGS` object — so a newly-added setting has a sane
+value before anyone saves it, unknown keys are dropped, and old documents never need a migration.
+
+**Profile fields on `users`.** The Profile tab writes the current user's own record, so `users`
+carries three presentation fields beyond auth: `firstName`, `lastName`, `bio` (all `string`,
+default `''`). `name` remains the display name / author byline; `avatar` and `email` are the
+existing fields. Edited via `PUT /api/auth/me` (self-service — never touches `role`/`active`);
+password changes go through `POST /api/auth/change-password`.
 
 ---
 

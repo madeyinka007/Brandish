@@ -85,6 +85,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │           ├── taxonomy/page.tsx              # Tags/Taxonomy (Figma 94:510) — full CRUD on /api/admin/tags (create/edit form + list + inline delete)
 │   │           ├── comments/page.tsx              # Comments moderation (Figma 114:486) — GET /api/admin/comments; stat cards, status tabs, bulk approve/spam/delete, per-comment approve/unapprove/spam/delete; fires BADGE_REFRESH_EVENT
 │   │           ├── analytics/page.tsx             # Analytics dashboard (Figma 135:494) — GET /api/admin/analytics?days=; stat cards+sparklines, SVG traffic area chart, sources donut, top posts, device bars, top countries; range selector + CSV export
+│   │           ├── settings/page.tsx              # Settings (Figma 188:444) — 5 tabs: Site/Appearance/Reading/Comments → GET/PUT /api/admin/settings (singleton); Profile → GET/PUT /api/auth/me + change-password. Shared Save/Discard header + dirty tracking; site tabs read-only for non-super-admin; theme applier (light/dark/auto)
 │   │           └── [section]/page.tsx  # Placeholder for the remaining sections (/admin/posts, /admin/comments, …)
 │   │   # ([category]/ and search/ public-blog pages are planned; their empty placeholder files were removed during the admin build)
 │   │
@@ -119,6 +120,8 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── posts.ts               # Posts admin API client — adminList/get/create/update/delete + body(Tiptap doc)/YouTube-id helpers (built)
 │   │   ├── comments.ts            # Comments admin API client — list/moderate(setStatus)/delete via authFetch (built)
 │   │   ├── analytics.ts           # Analytics admin API client — getAnalytics(days) → overview (summary/timeseries/sources/devices/topPosts/topCountries) (built)
+│   │   ├── settings.ts            # Settings admin API client — getSettings/updateSettings(patch) for the site/appearance/reading/comments singleton (built)
+│   │   ├── profile.ts             # Self-profile client — getMe/updateProfile (mirrors name/avatar/email into the session)/changePassword via /api/auth/me (built)
 │   │   ├── mongodb.ts             # Cached MongoClient for Next.js server components (public blog — planned)
 │   │   ├── mongoose.ts            # Cached Mongoose connection for Next.js server components
 │   │   ├── models/                # Mongoose models — identical copy of server/lib/models/
@@ -153,7 +156,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   ├── bootstrap.ts               # Lambda handler for the API fn — loadSecrets() then dynamic-imports index (secrets must precede Mongo connect-on-import)
 │   ├── authorizer.ts              # API Gateway Lambda Authorizer — verifies our Bearer access token; gates /api/admin/*
 │   ├── routes/                    # Wiring only — path + middleware + controller method, no logic
-│   │   ├── auth.ts                 # /api/auth/* — login, refresh, logout, password, verify (see docs/auth.md)
+│   │   ├── auth.ts                 # /api/auth/* — login, refresh, logout, GET/PUT /me (self-profile), password, verify (see docs/auth.md)
 │   │   ├── posts.ts
 │   │   ├── comments.ts 
 │   │   ├── views.ts
@@ -161,6 +164,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── categories.ts
 │   │   ├── tags.ts
 │   │   ├── search.ts
+│   │   ├── settings.ts             # GET /api/settings — public-safe subset (no auth)
 │   │   └── admin/
 │   │       ├── posts.ts
 │   │       ├── comments.ts
@@ -172,6 +176,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │       ├── media.ts
 │   │       ├── upload-url.ts
 │   │       ├── search-logs.ts
+│   │       ├── settings.ts          # GET (editor+) / PUT (super-admin) /api/admin/settings
 │   │       ├── analytics.ts
 │   │       └── audit-log.ts
 │   ├── controllers/                # Orchestrate one request each — call one service method, shape the response
@@ -186,9 +191,10 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── media.ts
 │   │   ├── search.ts
 │   │   ├── analytics.ts
+│   │   ├── settings.ts
 │   │   └── auditLog.ts
 │   ├── services/                   # Business logic — the only layer allowed to call domain models / getDb()
-│   │   ├── auth.ts                  # login/logout/refresh (rotation)/forgot/reset/change/verify — see docs/auth.md
+│   │   ├── auth.ts                  # login/logout/refresh (rotation)/forgot/reset/change/verify + getProfile/updateProfile (/me) — see docs/auth.md
 │   │   ├── posts.ts
 │   │   ├── comments.ts              # Mongoose Comment model; public createComment (strips HTML via sanitize-html, stores `pending`) + admin list/setStatus/delete moderation
 │   │   ├── users.ts
@@ -199,6 +205,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── media.ts                # Native-driver — no BaseModel; calls getDb() directly (see docs/development.md)
 │   │   ├── search.ts               # Native-driver — no BaseModel; calls getDb() directly
 │   │   ├── analytics.ts            # Native-driver — aggregates page_views in-process: views/unique/avg-time/bounce (+prev-period deltas), daily time-series, sources (referrer), devices (UA), countries (geoFromIp stub), top posts. See docs/api-routes.md
+│   │   ├── settings.ts             # Native-driver singleton (`_id:'site'`) — DEFAULT_SETTINGS + getSettings (cached 60s) / getPublicSettings (safe subset) / updateSettings (coerce+clamp+enum-guard, deep-merge, cache-bust). Site/appearance/reading/comments. Secrets NEVER here (SSM). Profile is separate (auth /me)
 │   │   └── auditLog.ts             # Native-driver — no BaseModel; calls getDb() directly
 │   ├── middleware/
 │   │   ├── auth.ts                # requireAuth (Bearer access-token verify) + requireRole
@@ -216,7 +223,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── validation.ts          # Pure request-payload validators (no dependency)
 │   │   ├── errors.ts              # AppError + asyncHandler
 │   │   ├── models/                # Domain models (BaseModel subclasses via MongoLibrary.createModel); see docs/development.md
-│   │   │   ├── User.ts             # + sanitizeUser(); has auth token fields beyond the web/ copy
+│   │   │   ├── User.ts             # + sanitizeUser(); firstName/lastName/bio (Profile tab) + auth token fields beyond the web/ copy
 │   │   │   ├── Post.ts
 │   │   │   ├── Category.ts
 │   │   │   ├── Tag.ts
@@ -250,6 +257,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   │   ├── posts.test.ts
 │   │   │   ├── comments.test.ts
 │   │   │   ├── analytics.test.ts
+│   │   │   ├── settings.test.ts
 │   │   │   ├── uploadUrl.test.ts
 │   │   │   └── media.test.ts
 │   │   ├── services/
@@ -260,6 +268,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   │   ├── posts.test.ts
 │   │   │   ├── comments.test.ts
 │   │   │   ├── analytics.test.ts
+│   │   │   ├── settings.test.ts
 │   │   │   ├── uploadUrl.test.ts
 │   │   │   └── media.test.ts
 │   │   ├── scripts/
@@ -304,7 +313,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   ├── auth.md                    # Authentication (API-owned JWT), roles, and middleware patterns
 │   ├── openapi-auth.yaml          # OpenAPI 3.1 spec for the /api/auth endpoints
 │   ├── aws-infrastructure.md      # AWS services, env vars, CI/CD, cost
-│   ├── workflows.md               # Core flows: ISR, media, comments, newsletter
+│   ├── workflows.md               # Core flows: ISR, media, comments, newsletter, settings & theme (light/dark)
 │   └── development.md             # Local dev setup, conventions, slug generation
 │
 └── CLAUDE.md                      # This file
@@ -316,10 +325,10 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 
 | File | Contents |
 |---|---|
-| [`docs/data-model.md`](docs/data-model.md) | MongoDB collections (posts, categories, users, comments, subscribers, media), DynamoDB tables, and all indexes |
+| [`docs/data-model.md`](docs/data-model.md) | MongoDB collections (posts, categories, users, comments, subscribers, media, singleton `settings`), DynamoDB tables, and all indexes |
 | [`docs/api-routes.md`](docs/api-routes.md) | Public and admin API route reference |
 | [`docs/auth.md`](docs/auth.md) | Role definitions, API-owned JWT auth (access + rotating refresh tokens), auth flows, middleware |
 | [`docs/openapi-auth.yaml`](docs/openapi-auth.yaml) | OpenAPI 3.1 spec for the `/api/auth` endpoints |
 | [`docs/aws-infrastructure.md`](docs/aws-infrastructure.md) | AWS services, all environment variables, CI/CD pipeline, cost estimates |
-| [`docs/workflows.md`](docs/workflows.md) | MongoDB connection pattern, ISR revalidation, media upload, comment moderation, newsletter send |
+| [`docs/workflows.md`](docs/workflows.md) | MongoDB connection pattern, ISR revalidation, media upload, comment moderation, newsletter send, settings & theme (light/dark display mode) |
 | [`docs/development.md`](docs/development.md) | Local dev commands, key conventions, slug generation |

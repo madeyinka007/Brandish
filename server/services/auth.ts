@@ -145,6 +145,51 @@ export async function changePassword(
   await users.updateById(userId, { passwordHash });
 }
 
+/** The current user's own record, sanitised. Backs GET /api/auth/me. */
+export async function getProfile(userId: string): Promise<PublicUser> {
+  const users = await getUserModel();
+  const user = await users.findById(userId);
+  if (!user) {
+    throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
+  }
+  return sanitizeUser(user);
+}
+
+/**
+ * Self-service profile edit (name / first / last / bio / avatar / email). Role and active
+ * status are deliberately NOT editable here — those stay under the super-admin users API.
+ * Email changes are checked for uniqueness (409 on clash).
+ */
+export async function updateProfile(userId: string, data: Record<string, unknown>): Promise<PublicUser> {
+  const update: Record<string, unknown> = {};
+
+  if (data.name !== undefined) {
+    if (!isNonEmptyString(data.name)) throw new AppError(400, 'INVALID_PROFILE', 'Display name cannot be empty');
+    update.name = (data.name as string).trim();
+  }
+  if (data.firstName !== undefined) update.firstName = isNonEmptyString(data.firstName) ? (data.firstName as string).trim() : '';
+  if (data.lastName !== undefined) update.lastName = isNonEmptyString(data.lastName) ? (data.lastName as string).trim() : '';
+  if (data.bio !== undefined) update.bio = typeof data.bio === 'string' ? data.bio.slice(0, 500) : '';
+  if (data.avatar !== undefined) update.avatar = typeof data.avatar === 'string' ? data.avatar : '';
+
+  const users = await getUserModel();
+  if (data.email !== undefined) {
+    if (!isEmail(data.email)) throw new AppError(400, 'INVALID_PROFILE', 'A valid email is required');
+    const email = (data.email as string).trim().toLowerCase();
+    const clash = await users.findOne({ email });
+    if (clash && String(clash._id) !== String(userId)) {
+      throw new AppError(409, 'EMAIL_TAKEN', 'That email is already in use');
+    }
+    update.email = email;
+  }
+
+  const user = await users.updateById(userId, update);
+  if (!user) {
+    throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
+  }
+  return sanitizeUser(user);
+}
+
 export async function verifyEmail(token: unknown): Promise<void> {
   if (!isNonEmptyString(token)) {
     throw new AppError(400, 'MISSING_VERIFICATION_TOKEN', 'Verification token is required');

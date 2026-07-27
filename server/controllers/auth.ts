@@ -8,6 +8,18 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   res.status(200).json(result);
 });
 
+export const me = asyncHandler(async (req: Request, res: Response) => {
+  const userId = (req as any).user.userId;
+  const user = await authService.getProfile(userId);
+  res.status(200).json(user);
+});
+
+export const updateProfile = asyncHandler(async (req: Request, res: Response) => {
+  const userId = (req as any).user.userId;
+  const user = await authService.updateProfile(userId, req.body ?? {});
+  res.status(200).json(user);
+});
+
 export const refresh = asyncHandler(async (req: Request, res: Response) => {
   const { refreshToken } = req.body ?? {};
   const tokens = await authService.refresh(refreshToken);

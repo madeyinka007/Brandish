@@ -40,13 +40,15 @@ like `POST /api/comments` need no token.
 
 The API owns authentication (custom JWT + rotating refresh tokens, **not** NextAuth) —
 see [`docs/auth.md`](auth.md) and [`docs/openapi-auth.yaml`](openapi-auth.yaml). All of
-these are unauthenticated except `change-password` (needs a valid access token).
+these are unauthenticated except `me` and `change-password` (need a valid access token).
 
 | Method | Route | Auth | Description |
 |---|---|---|---|
 | `POST` | `/api/auth/login` | — | Email + password → `{ accessToken, refreshToken, user }`. Generic `401` on bad creds; `403 EMAIL_NOT_VERIFIED` if unverified. |
 | `POST` | `/api/auth/refresh` | — | Exchange a refresh token for a new pair (rotation — old token invalidated). |
 | `POST` | `/api/auth/logout` | — | Revoke the given refresh token (idempotent). |
+| `GET` | `/api/auth/me` | Bearer | The current user, sanitised (incl. `firstName`/`lastName`/`bio`). Backs the Settings › Profile tab. |
+| `PUT` | `/api/auth/me` | Bearer | Self-service profile edit — `name`/`firstName`/`lastName`/`bio`/`avatar`/`email` (email uniqueness-checked → `409 EMAIL_TAKEN`). Never `role`/`active`. |
 | `POST` | `/api/auth/forgot-password` | — | Send a reset email. Enumeration-safe — always `200`. |
 | `POST` | `/api/auth/reset-password` | — | Reset password via reset token. |
 | `POST` | `/api/auth/change-password` | Bearer | Change password (verifies current). |
@@ -73,6 +75,7 @@ it (`401 NO_SESSION` if absent, `401 INVALID_TOKEN` if invalid/expired).
 | `GET` | `/api/categories` | List **active** categories, ordered — for nav/filter UI |
 | `GET` | `/api/tags` | List all tags (name, slug) — for tag-cloud/filter UI |
 | `GET` | `/api/search?q=` | Search published posts by title/excerpt. Query params: `?q=&page=&limit=` |
+| `GET` | `/api/settings` | Public-safe site settings — `site` (title/tagline/logo/language/timezone/postsPerPage/maintenance/enable flags), `appearance` (theme mode, accent, fonts, layout), `reading`, and `comments` (whoCanComment + nestingDepth only). **Never** returns secrets, moderation flags, or `updatedBy` |
 
 ### Notes on public routes
 
@@ -270,6 +273,21 @@ admin actions (post publish, user role change, comment moderation, etc., per
 [`docs/data-model.md`](data-model.md)) via a shared `logAudit()` helper called from each
 mutating service, not through this route. `super-admin`-only to view, since the log
 itself covers actions across every role.
+
+### Settings
+
+| Method | Route | Min role | Description |
+|---|---|---|---|
+| `GET` | `/api/admin/settings` | `editor` | Full site settings document — `site` / `appearance` / `reading` / `comments` sections |
+| `PUT` | `/api/admin/settings` | `super-admin` | Patch settings — partial (one tab/section at a time), deep-merged; coerces + clamps every field, enum-guards, bumps `updatedAt`/`updatedBy`, busts the cache |
+
+Backed by the singleton `settings` document (see [`docs/data-model.md`](data-model.md#settings))
+and the **Settings & theme flow** in [`docs/workflows.md`](workflows.md). These four sections map to
+the admin Settings page's Site/Appearance/Reading/Comments tabs; the page's **Profile** tab is a
+separate self-service flow on `/api/auth/me` (below). Editing is `super-admin`; `editor` may read so
+shared behaviour (e.g. comment moderation) is visible. `appearance.theme` (`light`/`dark`/`auto`) is
+the site's default display mode — individual admins can override it per-browser. **Secrets are never
+exposed or set here** — they remain in SSM Parameter Store.
 
 ---
 

@@ -385,3 +385,100 @@ GET /api/newsletter/confirm?token=:token
   ├── findOneAndUpdate({ token }, { $set: { confirmedAt: now, active: true, token: null } })
   └── Redirect to {FRONTEND_URL}/newsletter/confirm (thank you page — web/app/newsletter/confirm/page.tsx)
 ```
+
+---
+
+## Settings & theme (display mode) flow
+
+The admin **Settings** page (`web/app/admin/(dashboard)/settings/page.tsx`, Figma 188:444) has
+five tabs. Four — **Site**, **Appearance**, **Reading**, **Comments** — are site-wide config in the
+singleton **`settings`** document (native driver — see [`docs/data-model.md`](data-model.md#settings)),
+which stores *behaviour and presentation only*; secrets stay in SSM. The fifth — **Profile** — edits
+the signed-in user's own `users` record and is a separate flow (below). One shared **Save changes**
+button in the page header persists whatever is dirty; it may fire the settings `PUT` and/or the
+profile `PUT`. A "Discard" button reverts the drafts.
+
+### Site settings — storage, load & save
+
+```
+GET /api/settings            (public)  → public-safe subset (settingsService.toPublic):
+                                          site (title, logoUrl, tagline, description, language,
+                                          timezone, postsPerPage, maintenanceMode, enable* flags),
+                                          appearance (theme, accent, fonts, width, layout toggles),
+                                          reading (all), comments (whoCanComment, nestingDepth only)
+GET /api/admin/settings      (editor+) → full document (incl. moderation flags)
+PUT /api/admin/settings      (super-admin)
+  │
+  ├── 1. For each provided section (site/appearance/reading/comments), coerce every known key:
+  │       strings kept/trimmed, booleans typed, numbers clamped (postsPerPage 1–100,
+  │       excerptWords 10–300, nestingDepth 1–10, …), enums guarded (theme ∈ light|dark|auto;
+  │       contentWidth; postListsShow; whoCanComment), accentColor must match /^#[0-9a-f]{6}$/.
+  │       Unknown keys and unknown top-level sections are dropped.
+  │
+  ├── 2. Deep-merge over the current settings (the UI sends only changed sections),
+  │       set updatedAt = now, updatedBy = req.user.userId
+  │
+  ├── 3. upsert { _id: 'site' }  (creates the doc on first save)
+  │
+  └── 4. Bust the module-scope settings cache so the next read is fresh
+```
+
+**Caching.** Like the DB clients, the resolved settings object is cached at module scope (60s TTL)
+and reused across warm Lambda invocations — reads rarely hit Mongo on the hot path. `getSettings()`
+returns the stored document deep-merged over a code-defined `DEFAULT_SETTINGS`, so a brand-new
+setting has a sane default before anyone saves, unknown/legacy keys are ignored, and old documents
+need no migration. A successful `PUT` clears the cache; the TTL is the fallback so multiple warm
+containers converge.
+
+### Applying settings
+
+These reads are wired to supersede scattered constants as each surface is built — e.g. the comment
+pipeline (see the moderation flow above) reads `comments.holdForModeration` (`true` keeps the
+current `status: 'pending'` default; `false` auto-approves), `comments.requireRecaptcha`, and
+`site.enableComments` from `getSettings()`; `site.maintenanceMode` gates the public blog;
+`site.postsPerPage` / `reading.*` feed pagination and archive rendering; `appearance.*` themes the
+public site.
+
+### Profile (Settings › Profile) — self-service
+
+The Profile tab is the current user's own account, not site config:
+
+```
+GET /api/auth/me   (any signed-in user) → sanitizeUser(current user)  — incl. firstName/lastName/bio
+PUT /api/auth/me   (any signed-in user) → updates name (display/byline), firstName, lastName, bio,
+                                          avatar, email (uniqueness-checked → 409 EMAIL_TAKEN).
+                                          NEVER role or active — those stay on the super-admin
+                                          users API. Response is re-sanitised.
+POST /api/auth/change-password          → existing flow; the tab opens an inline form for it.
+```
+
+After a profile save the client mirrors `name`/`avatar`/`email` into the cached session
+(`web/lib/auth.ts` `updateStoredUser`) so the sidebar and topbar update immediately.
+
+### Display mode (light / dark / auto)
+
+`appearance.theme` (`light` | `dark` | `auto`) is the **site default** display mode, set on the
+Appearance tab (super-admin). An individual admin can override it for their own browser. The theme
+is applied by stamping a `data-theme` attribute on `<html>`:
+
+```
+Theme resolution (client), highest priority first:
+  1. This user's explicit choice     → localStorage 'brandish-theme'  (set by the toggle)
+  2. Site default                     → settings.appearance.theme  (GET /api/settings)
+  3. 'auto'                           → matchMedia('(prefers-color-scheme: dark)')
+        ↓
+  document.documentElement.dataset.theme = 'light' | 'dark'
+```
+
+- **Applier (built).** `applyTheme(mode)` in the Settings page resolves `auto` against the system
+  preference, sets `document.documentElement.dataset.theme`, and persists the choice to
+  `localStorage['brandish-theme']`. It runs on load from the saved settings and on every save.
+- **Tokens, not per-element classes (follow-up).** To make dark mode *visible*, `web/app/globals.css`
+  needs a `:root[data-theme='dark']` block overriding the `@theme` palette variables (surfaces, text,
+  borders) so the existing `bg-white` / `text-slate-900` utilities recolour. Until those overrides
+  land, the theme is persisted and the attribute is set, but the admin UI stays light. A no-FOUC
+  inline script in the root layout `<head>` (reads `localStorage`/system before first paint) and a
+  quick topbar sun/moon toggle for the per-user override are the remaining pieces.
+
+> The public blog honours the same `appearance.theme` for its default; the resolution order and
+> `data-theme` mechanism are identical, so the theme logic is written once and shared.

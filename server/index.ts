@@ -14,6 +14,8 @@ import adminTagsRouter from './routes/admin/tags';
 import commentsRouter from './routes/comments';
 import adminCommentsRouter from './routes/admin/comments';
 import adminAnalyticsRouter from './routes/admin/analytics';
+import settingsRouter from './routes/settings';
+import adminSettingsRouter from './routes/admin/settings';
 import adminUploadUrlRouter from './routes/admin/upload-url';
 import adminMediaRouter from './routes/admin/media';
 import dotenv from 'dotenv'
@@ -36,6 +38,7 @@ app.use('/api/posts', postsRouter);
 app.use('/api/categories', categoriesRouter);
 app.use('/api/tags', tagsRouter);
 app.use('/api/comments', commentsRouter);
+app.use('/api/settings', settingsRouter);
 app.use('/api/admin/users', adminUsersRouter);
 app.use('/api/admin/authors', adminAuthorsRouter);
 app.use('/api/admin/posts', adminPostsRouter);
@@ -43,6 +46,7 @@ app.use('/api/admin/categories', adminCategoriesRouter);
 app.use('/api/admin/tags', adminTagsRouter);
 app.use('/api/admin/comments', adminCommentsRouter);
 app.use('/api/admin/analytics', adminAnalyticsRouter);
+app.use('/api/admin/settings', adminSettingsRouter);
 app.use('/api/admin/upload-url', adminUploadUrlRouter);
 app.use('/api/admin/media', adminMediaRouter);
 

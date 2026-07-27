@@ -44,6 +44,14 @@ export function isAuthenticated(): boolean {
   return !!getAccessToken();
 }
 
+/** Merge fields into the cached session user (e.g. after a profile edit) so the shell updates. */
+export function updateStoredUser(partial: Partial<AdminUser>): void {
+  if (typeof window === "undefined") return;
+  const current = getStoredUser();
+  if (!current) return;
+  localStorage.setItem(USER_KEY, JSON.stringify({ ...current, ...partial }));
+}
+
 function persist(data: LoginResponse): void {
   localStorage.setItem(ACCESS_KEY, data.accessToken);
   localStorage.setItem(REFRESH_KEY, data.refreshToken);

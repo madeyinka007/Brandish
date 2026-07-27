@@ -247,3 +247,60 @@ describe('resendVerification (enumeration-safe)', () => {
     expect(sendEmail).not.toHaveBeenCalled();
   });
 });
+
+describe('getProfile', () => {
+  test('returns the current user, sanitized', async () => {
+    users.findById.mockResolvedValue(makeUser());
+    const me = await auth.getProfile('user1');
+    expect(users.findById).toHaveBeenCalledWith('user1');
+    expect(me).not.toHaveProperty('passwordHash');
+    expect(me.email).toBe('ada@brandish.ng');
+  });
+
+  test('404 when the user is gone', async () => {
+    users.findById.mockResolvedValue(null);
+    await expect(auth.getProfile('ghost')).rejects.toMatchObject({ statusCode: 404, code: 'USER_NOT_FOUND' });
+  });
+});
+
+describe('updateProfile', () => {
+  test('updates name/first/last/bio/avatar and returns sanitized user', async () => {
+    users.findById.mockResolvedValue(makeUser());
+    users.updateById.mockResolvedValue(makeUser({ name: 'Ada A.', firstName: 'Ada', lastName: 'A' }));
+
+    const me = await auth.updateProfile('user1', { name: 'Ada A.', firstName: 'Ada', lastName: 'A', bio: 'hi', avatar: 'x.png' });
+
+    expect(users.updateById).toHaveBeenCalledWith('user1', expect.objectContaining({ name: 'Ada A.', firstName: 'Ada', lastName: 'A', bio: 'hi', avatar: 'x.png' }));
+    expect(me).not.toHaveProperty('passwordHash');
+  });
+
+  test('never lets you change role or active', async () => {
+    users.updateById.mockResolvedValue(makeUser());
+    await auth.updateProfile('user1', { name: 'Ada', role: 'super-admin', active: false } as any);
+    const patch = users.updateById.mock.calls[0][1];
+    expect(patch).not.toHaveProperty('role');
+    expect(patch).not.toHaveProperty('active');
+  });
+
+  test('rejects an empty display name', async () => {
+    await expect(auth.updateProfile('user1', { name: '' })).rejects.toMatchObject({ statusCode: 400, code: 'INVALID_PROFILE' });
+    expect(users.updateById).not.toHaveBeenCalled();
+  });
+
+  test('409 when the new email belongs to another user', async () => {
+    users.findOne.mockResolvedValue(makeUser({ _id: 'other' }));
+    await expect(auth.updateProfile('user1', { email: 'taken@brandish.ng' })).rejects.toMatchObject({ statusCode: 409, code: 'EMAIL_TAKEN' });
+  });
+
+  test('allows keeping your own email (same id, no clash)', async () => {
+    users.findOne.mockResolvedValue(makeUser({ _id: 'user1' }));
+    users.updateById.mockResolvedValue(makeUser());
+    await auth.updateProfile('user1', { email: 'ada@brandish.ng' });
+    expect(users.updateById).toHaveBeenCalledWith('user1', expect.objectContaining({ email: 'ada@brandish.ng' }));
+  });
+
+  test('404 when the user no longer exists', async () => {
+    users.updateById.mockResolvedValue(null);
+    await expect(auth.updateProfile('ghost', { name: 'X' })).rejects.toMatchObject({ statusCode: 404, code: 'USER_NOT_FOUND' });
+  });
+});
