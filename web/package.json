@@ -9,6 +9,7 @@
     "test": "echo \"(web) no unit tests yet\" && exit 0"
   },
   "dependencies": {
+    "@tabler/icons-react": "^3.46.0",
     "@tiptap/extension-image": "^2.11.0",
     "@tiptap/extension-link": "^2.11.0",
     "@tiptap/extension-placeholder": "^2.11.0",

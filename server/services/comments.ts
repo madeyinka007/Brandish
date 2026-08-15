@@ -36,6 +36,52 @@ export async function listApprovedByPost(postId: unknown): Promise<CommentDoc[]>
   return model.find({ postId, status: 'approved' }, { sort: 'createdAt', limit: LIST_LIMIT });
 }
 
+export interface PublicComment {
+  _id: string;
+  authorName: string;
+  body: string;
+  createdAt: Date;
+}
+export interface RecentComment extends PublicComment {
+  post: { title: string; slug: string; category: string } | null;
+}
+
+/** Strip a stored comment to the fields safe to expose publicly — NEVER authorEmail or ip
+ *  (see docs/data-model.md: authorEmail is stored, never displayed). */
+export function toPublicComment(c: CommentDoc): PublicComment {
+  return { _id: String(c._id), authorName: c.authorName, body: c.body, createdAt: c.createdAt };
+}
+
+const RECENT_LIMIT = 8;
+
+/** Most-recent approved comments across all PUBLISHED posts, joined to the post they belong to.
+ *  Backs the "Recent Comments" widget on listing pages. Safe fields only. */
+export async function listRecentApproved(limit = RECENT_LIMIT): Promise<RecentComment[]> {
+  const model = await getCommentModel();
+  const rows = await model.aggregate<{
+    _id: unknown;
+    authorName: string;
+    body: string;
+    createdAt: Date;
+    post?: { title: string; slug: string; category: string };
+  }>([
+    { $match: { status: 'approved' } },
+    { $lookup: { from: 'posts', localField: 'postId', foreignField: '_id', as: 'post' } },
+    { $unwind: { path: '$post', preserveNullAndEmptyArrays: true } },
+    { $match: { 'post.status': 'published' } },
+    { $sort: { createdAt: -1 } },
+    { $limit: Math.min(Math.max(1, limit), 20) },
+    { $project: { _id: 1, authorName: 1, body: 1, createdAt: 1, 'post.title': 1, 'post.slug': 1, 'post.category': 1 } },
+  ]);
+  return rows.map((r) => ({
+    _id: String(r._id),
+    authorName: r.authorName,
+    body: r.body,
+    createdAt: r.createdAt,
+    post: r.post ? { title: r.post.title, slug: r.post.slug, category: r.post.category } : null,
+  }));
+}
+
 export interface CreateCommentInput {
   postId: unknown;
   authorName: unknown;

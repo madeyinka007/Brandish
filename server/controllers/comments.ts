@@ -12,10 +12,17 @@ function clientIp(req: Request): string {
 
 // ---- Public ----
 
-// GET /api/comments?postId= — approved comments for a post.
+// GET /api/comments — public read. With ?postId= it returns that post's approved comments;
+// with no postId it returns recent approved comments across posts (Recent Comments widget).
+// Either way the response carries safe fields only — authorEmail/ip are never exposed.
 export const listPublic = asyncHandler(async (req: Request, res: Response) => {
-  const comments = await commentsService.listApprovedByPost(req.query.postId);
-  res.status(200).json(comments);
+  const { postId } = req.query;
+  if (typeof postId === 'string' && postId.trim() !== '') {
+    const comments = await commentsService.listApprovedByPost(postId);
+    return res.status(200).json(comments.map(commentsService.toPublicComment));
+  }
+  const recent = await commentsService.listRecentApproved();
+  res.status(200).json(recent);
 });
 
 // POST /api/comments — reader submission (reCAPTCHA + rate limit applied by route middleware).

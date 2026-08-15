@@ -13,7 +13,7 @@ import { getCommentModel } from '../../lib/models/Comment';
 import { sendEmail } from '../../lib/ses';
 import * as comments from '../../services/comments';
 
-let model: { find: jest.Mock; create: jest.Mock; updateById: jest.Mock; delete: jest.Mock };
+let model: { find: jest.Mock; create: jest.Mock; updateById: jest.Mock; delete: jest.Mock; aggregate: jest.Mock };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -23,6 +23,7 @@ beforeEach(() => {
     create: jest.fn(),
     updateById: jest.fn(),
     delete: jest.fn(),
+    aggregate: jest.fn().mockResolvedValue([]),
   };
   (getCommentModel as jest.Mock).mockResolvedValue(model);
 });
@@ -54,6 +55,41 @@ describe('listApprovedByPost', () => {
 
   test('400 when postId is missing', async () => {
     await expect(comments.listApprovedByPost('')).rejects.toMatchObject({ statusCode: 400, code: 'INVALID_COMMENT_INPUT' });
+  });
+});
+
+describe('toPublicComment', () => {
+  test('keeps only safe fields — never authorEmail or ip', () => {
+    const out = comments.toPublicComment({
+      _id: 'c1', authorName: 'Ada', body: 'hi', createdAt: new Date(0),
+      authorEmail: 'ada@example.com', ip: '1.2.3.4', status: 'approved', postId: 'p1',
+    } as any);
+    expect(out).toEqual({ _id: 'c1', authorName: 'Ada', body: 'hi', createdAt: new Date(0) });
+    expect(out).not.toHaveProperty('authorEmail');
+    expect(out).not.toHaveProperty('ip');
+  });
+});
+
+describe('listRecentApproved', () => {
+  test('aggregates approved comments on published posts, newest first, joined to the post', async () => {
+    model.aggregate.mockResolvedValue([
+      { _id: 'c1', authorName: 'Ada', body: 'nice', createdAt: new Date(1), post: { title: 'T', slug: 's', category: 'money' } },
+      { _id: 'c2', authorName: 'Obi', body: 'ok', createdAt: new Date(0), post: undefined },
+    ]);
+    const out = await comments.listRecentApproved(5);
+    const pipeline = model.aggregate.mock.calls[0][0];
+    expect(pipeline[0]).toEqual({ $match: { status: 'approved' } });
+    expect(pipeline).toEqual(expect.arrayContaining([{ $match: { 'post.status': 'published' } }]));
+    expect(pipeline).toEqual(expect.arrayContaining([{ $limit: 5 }]));
+    expect(out[0]).toEqual({ _id: 'c1', authorName: 'Ada', body: 'nice', createdAt: new Date(1), post: { title: 'T', slug: 's', category: 'money' } });
+    expect(out[1].post).toBeNull();
+    // safe fields only — no email/ip surface
+    out.forEach((c) => { expect(c).not.toHaveProperty('authorEmail'); expect(c).not.toHaveProperty('ip'); });
+  });
+
+  test('clamps the limit to 1..20', async () => {
+    await comments.listRecentApproved(999);
+    expect(model.aggregate.mock.calls[0][0]).toEqual(expect.arrayContaining([{ $limit: 20 }]));
   });
 });
 

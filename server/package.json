@@ -16,7 +16,8 @@
     "seed:admin": "ts-node scripts/seedSuperAdmin.ts",
     "seed:categories": "ts-node scripts/seedCategories.ts",
     "seed:comments": "ts-node scripts/seedComments.ts",
-    "seed:analytics": "ts-node scripts/seedAnalytics.ts"
+    "seed:analytics": "ts-node scripts/seedAnalytics.ts",
+    "seed:posts": "ts-node scripts/seedPosts.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cloudfront": "^3.622.0",

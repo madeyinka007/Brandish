@@ -10,8 +10,6 @@ const COLLECTION = 'settings';
 const SITE_ID = 'site';
 const CACHE_TTL_MS = 60_000;
 
-export type ThemeMode = 'light' | 'dark' | 'auto';
-export type ContentWidth = 'narrow' | 'standard' | 'wide';
 export type PostListsShow = 'excerpt' | 'full';
 export type WhoCanComment = 'anyone' | 'subscribers' | 'closed';
 
@@ -28,14 +26,13 @@ export interface SiteSettings {
   enableRss: boolean;
   maintenanceMode: boolean;
 }
-export interface AppearanceSettings {
-  theme: ThemeMode;
-  accentColor: string;
-  headingFont: string;
-  bodyFont: string;
-  contentWidth: ContentWidth;
-  showCoverImages: boolean;
-  stickyNav: boolean;
+export interface SocialsSettings {
+  facebook: string;
+  x: string;
+  linkedin: string;
+  instagram: string;
+  whatsapp: string; // phone number (e.g. +234…), not a URL
+  youtube: string;
 }
 export interface ReadingSettings {
   postListsShow: PostListsShow;
@@ -55,7 +52,7 @@ export interface CommentSettings {
 }
 export interface Settings {
   site: SiteSettings;
-  appearance: AppearanceSettings;
+  socials: SocialsSettings;
   reading: ReadingSettings;
   comments: CommentSettings;
   updatedAt: Date | null;
@@ -76,14 +73,13 @@ export const DEFAULT_SETTINGS: Settings = {
     enableRss: true,
     maintenanceMode: false,
   },
-  appearance: {
-    theme: 'light',
-    accentColor: '#4F46E5',
-    headingFont: 'Inter',
-    bodyFont: 'Inter',
-    contentWidth: 'wide',
-    showCoverImages: true,
-    stickyNav: true,
+  socials: {
+    facebook: '',
+    x: '',
+    linkedin: '',
+    instagram: '',
+    whatsapp: '',
+    youtube: '',
   },
   reading: {
     postListsShow: 'excerpt',
@@ -105,8 +101,6 @@ export const DEFAULT_SETTINGS: Settings = {
   updatedBy: null,
 };
 
-const THEMES: ThemeMode[] = ['light', 'dark', 'auto'];
-const WIDTHS: ContentWidth[] = ['narrow', 'standard', 'wide'];
 const LIST_SHOW: PostListsShow[] = ['excerpt', 'full'];
 const WHO: WhoCanComment[] = ['anyone', 'subscribers', 'closed'];
 
@@ -118,6 +112,29 @@ const int = (v: unknown, def: number, min: number, max: number) => {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
 };
 const oneOf = <T,>(v: unknown, allowed: readonly T[], def: T) => (allowed.includes(v as T) ? (v as T) : def);
+// A social profile URL: empty string clears the field; otherwise it must be a valid http(s)
+// URL (≤300 chars) or the current value is kept. Never stores javascript:/data: or garbage.
+const url = (v: unknown, def: string) => {
+  if (typeof v !== 'string') return def;
+  const t = v.trim();
+  if (t === '') return '';
+  try {
+    const parsed = new URL(t);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return t.slice(0, 300);
+  } catch {
+    /* not a parseable URL */
+  }
+  return def;
+};
+// A WhatsApp phone number: '+', digits, spaces, hyphens and parens only, with ≥7 digits.
+// Empty string clears the field; anything malformed keeps the current value.
+const phone = (v: unknown, def: string) => {
+  if (typeof v !== 'string') return def;
+  const t = v.trim();
+  if (t === '') return '';
+  if (/^\+?[\d\s()-]+$/.test(t) && t.replace(/\D/g, '').length >= 7) return t.slice(0, 32);
+  return def;
+};
 
 function mergeSite(cur: SiteSettings, p: Partial<Record<keyof SiteSettings, unknown>> = {}): SiteSettings {
   return {
@@ -134,16 +151,14 @@ function mergeSite(cur: SiteSettings, p: Partial<Record<keyof SiteSettings, unkn
     maintenanceMode: bool(p.maintenanceMode, cur.maintenanceMode),
   };
 }
-function mergeAppearance(cur: AppearanceSettings, p: Partial<Record<keyof AppearanceSettings, unknown>> = {}): AppearanceSettings {
-  const accent = str(p.accentColor, cur.accentColor);
+function mergeSocials(cur: SocialsSettings, p: Partial<Record<keyof SocialsSettings, unknown>> = {}): SocialsSettings {
   return {
-    theme: oneOf(p.theme, THEMES, cur.theme),
-    accentColor: /^#[0-9a-fA-F]{6}$/.test(accent) ? accent : cur.accentColor,
-    headingFont: str(p.headingFont, cur.headingFont),
-    bodyFont: str(p.bodyFont, cur.bodyFont),
-    contentWidth: oneOf(p.contentWidth, WIDTHS, cur.contentWidth),
-    showCoverImages: bool(p.showCoverImages, cur.showCoverImages),
-    stickyNav: bool(p.stickyNav, cur.stickyNav),
+    facebook: url(p.facebook, cur.facebook),
+    x: url(p.x, cur.x),
+    linkedin: url(p.linkedin, cur.linkedin),
+    instagram: url(p.instagram, cur.instagram),
+    whatsapp: phone(p.whatsapp, cur.whatsapp),
+    youtube: url(p.youtube, cur.youtube),
   };
 }
 function mergeReading(cur: ReadingSettings, p: Partial<Record<keyof ReadingSettings, unknown>> = {}): ReadingSettings {
@@ -171,7 +186,7 @@ function mergeComments(cur: CommentSettings, p: Partial<Record<keyof CommentSett
 function withDefaults(stored: Record<string, any>): Settings {
   return {
     site: mergeSite(DEFAULT_SETTINGS.site, stored.site ?? {}),
-    appearance: mergeAppearance(DEFAULT_SETTINGS.appearance, stored.appearance ?? {}),
+    socials: mergeSocials(DEFAULT_SETTINGS.socials, stored.socials ?? {}),
     reading: mergeReading(DEFAULT_SETTINGS.reading, stored.reading ?? {}),
     comments: mergeComments(DEFAULT_SETTINGS.comments, stored.comments ?? {}),
     updatedAt: stored.updatedAt ?? null,
@@ -211,7 +226,7 @@ export function toPublic(s: Settings) {
       enableRss: s.site.enableRss,
       maintenanceMode: s.site.maintenanceMode,
     },
-    appearance: s.appearance,
+    socials: s.socials,
     reading: s.reading,
     comments: { whoCanComment: s.comments.whoCanComment, nestingDepth: s.comments.nestingDepth },
   };
@@ -229,7 +244,7 @@ export async function updateSettings(patch: Record<string, any>, userId: string)
   const cur = await getSettings();
   const next: Settings = {
     site: patch.site ? mergeSite(cur.site, patch.site) : cur.site,
-    appearance: patch.appearance ? mergeAppearance(cur.appearance, patch.appearance) : cur.appearance,
+    socials: patch.socials ? mergeSocials(cur.socials, patch.socials) : cur.socials,
     reading: patch.reading ? mergeReading(cur.reading, patch.reading) : cur.reading,
     comments: patch.comments ? mergeComments(cur.comments, patch.comments) : cur.comments,
     updatedAt: new Date(),

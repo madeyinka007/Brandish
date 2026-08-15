@@ -8,6 +8,13 @@ interface RecaptchaResponse {
 }
 
 export async function validateRecaptcha(req: Request, res: Response, next: NextFunction) {
+  // LOCAL-DEV FALLBACK — skip verification when reCAPTCHA can't be enforced: no secret, or the
+  // local dev signal AUTH_STORE=memory (which also switches the token/rate-limit stores to memory).
+  // Keep AUTH_STORE unset and RECAPTCHA_SECRET set in production for full verification.
+  if (!process.env.RECAPTCHA_SECRET || process.env.AUTH_STORE === 'memory') {
+    return next();
+  }
+
   const { recaptchaToken } = req.body;
   if (!recaptchaToken) {
     return res.status(400).json({ error: 'reCAPTCHA token required', code: 'MISSING_RECAPTCHA_TOKEN' });

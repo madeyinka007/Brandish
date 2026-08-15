@@ -318,6 +318,13 @@ POST /api/comments
           reject link:  /api/admin/comments/:id?action=reject&token=SIGNED_JWT
 ```
 
+**Public submit form.** The post page (`web/components/public/CommentForm.tsx`) posts name/email/
+body to `POST /api/comments`; the comment is stored `pending` and shown only after moderation.
+reCAPTCHA v3 runs when `NEXT_PUBLIC_RECAPTCHA_SITE_KEY` is set. **Local-dev fallback:** with
+`AUTH_STORE=memory` (or no `RECAPTCHA_SECRET`) the reCAPTCHA check is skipped and the per-IP rate
+limit uses a process-local Map instead of DynamoDB — so comments work locally without AWS/reCAPTCHA.
+Keep `AUTH_STORE` unset and both reCAPTCHA keys set in production.
+
 **One-click moderation from email:**
 The approve/reject links embed a short-lived signed JWT so editors can act directly
 from the email without logging into the CMS. The token is signed with `JWT_SECRET`

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 82" width="340" height="82" role="img" aria-label="brandish — authority reinforced by knowledge">
+  <title>Brandish — Counterweight lockup</title>
+  <defs>
+    <clipPath id="field-b"><polygon points="187.0,0 340,0 340,63 159.8,63"></polygon></clipPath>
+    
+  </defs>
+  <rect width="340" height="82" fill="#B00D22"></rect>
+  <text class="wm-b" x="0" y="59.10000228881836" fill="#FFFFFF">brandish</text>
+  <g clip-path="url(#field-b)">
+    <rect width="340" height="63" fill="#FFFFFF"></rect>
+    <text class="wm-b" x="0" y="59.10000228881836" fill="#B00D22">brandish</text>
+  </g>
+  <text class="pay-b" x="340" y="78" text-anchor="end" fill="#FFFFFF">…authority reinforced by knowledge</text>
+</svg>

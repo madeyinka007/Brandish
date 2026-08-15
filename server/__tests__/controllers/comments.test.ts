@@ -66,13 +66,30 @@ describe('deleteComment controller', () => {
 });
 
 describe('listPublic controller', () => {
-  test('passes postId and 200s', async () => {
-    (commentsService.listApprovedByPost as jest.Mock).mockResolvedValue([{ _id: 'c1' }]);
+  test('with postId: returns that post\'s approved comments, sanitized (no authorEmail)', async () => {
+    (commentsService.listApprovedByPost as jest.Mock).mockResolvedValue([
+      { _id: 'c1', authorName: 'Ada', body: 'hi', createdAt: 'D', authorEmail: 'ada@x.co', ip: '1.2.3.4' },
+    ]);
+    (commentsService.toPublicComment as jest.Mock).mockImplementation((c: any) => ({
+      _id: c._id, authorName: c.authorName, body: c.body, createdAt: c.createdAt,
+    }));
     const res = mockRes();
     commentsController.listPublic({ query: { postId: 'p1' } } as any, res, jest.fn());
     await flush();
     expect(commentsService.listApprovedByPost).toHaveBeenCalledWith('p1');
+    expect(commentsService.listRecentApproved).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith([{ _id: 'c1', authorName: 'Ada', body: 'hi', createdAt: 'D' }]);
+  });
+
+  test('without postId: returns recent approved comments across posts', async () => {
+    (commentsService.listRecentApproved as jest.Mock).mockResolvedValue([{ _id: 'c9' }]);
+    const res = mockRes();
+    commentsController.listPublic({ query: {} } as any, res, jest.fn());
+    await flush();
+    expect(commentsService.listRecentApproved).toHaveBeenCalled();
+    expect(commentsService.listApprovedByPost).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith([{ _id: 'c9' }]);
   });
 });
 

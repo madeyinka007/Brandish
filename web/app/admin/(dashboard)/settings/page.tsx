@@ -8,16 +8,14 @@ import {
   updateSettings,
   type Settings,
   type SettingsPatch,
-  type ThemeMode,
 } from "@/lib/settings";
 import { getMe, updateProfile, changePassword, type Me } from "@/lib/profile";
 import { Avatar } from "@/components/admin/user-ui";
 import MediaPickerModal from "@/components/admin/MediaPickerModal";
 import {
   Camera,
-  Check,
   FileText,
-  ImageIcon,
+  Link2,
   Lock,
   Mail,
   MessageSquare,
@@ -25,18 +23,17 @@ import {
   User,
 } from "@/components/admin/icons";
 
-type TabKey = "site" | "profile" | "appearance" | "reading" | "comments";
+type TabKey = "site" | "profile" | "socials" | "reading" | "comments";
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
 const TABS: { key: TabKey; label: string; icon: Icon }[] = [
   { key: "site", label: "Site settings", icon: SettingsIcon },
   { key: "profile", label: "Profile information", icon: User },
-  { key: "appearance", label: "Appearance", icon: ImageIcon },
+  { key: "socials", label: "Socials", icon: Link2 },
   { key: "reading", label: "Reading", icon: FileText },
   { key: "comments", label: "Comments", icon: MessageSquare },
 ];
 
-const ACCENTS = ["#4F46E5", "#10B981", "#F59E0B", "#EF4444", "#3B82F6", "#EC4899", "#111827"];
 const LANGUAGES = [
   { value: "en-US", label: "English (United States)" },
   { value: "en-GB", label: "English (United Kingdom)" },
@@ -44,7 +41,6 @@ const LANGUAGES = [
   { value: "fr-FR", label: "French (France)" },
 ];
 const TIMEZONES = ["Africa/Lagos", "Africa/Accra", "Africa/Nairobi", "Europe/London", "America/New_York", "UTC"];
-const FONTS = ["Inter", "System UI", "Georgia", "Merriweather", "Roboto"];
 
 const inputCls =
   "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand focus:ring-2 focus:ring-brand/30 disabled:bg-slate-50 disabled:text-slate-400";
@@ -173,8 +169,8 @@ export default function SettingsPage() {
   function setSite<K extends keyof Settings["site"]>(key: K, value: Settings["site"][K]) {
     setDraft((d) => (d ? { ...d, site: { ...d.site, [key]: value } } : d));
   }
-  function setAppearance<K extends keyof Settings["appearance"]>(key: K, value: Settings["appearance"][K]) {
-    setDraft((d) => (d ? { ...d, appearance: { ...d.appearance, [key]: value } } : d));
+  function setSocials<K extends keyof Settings["socials"]>(key: K, value: Settings["socials"][K]) {
+    setDraft((d) => (d ? { ...d, socials: { ...d.socials, [key]: value } } : d));
   }
   function setReading<K extends keyof Settings["reading"]>(key: K, value: Settings["reading"][K]) {
     setDraft((d) => (d ? { ...d, reading: { ...d.reading, [key]: value } } : d));
@@ -201,13 +197,12 @@ export default function SettingsPage() {
       // Settings (super-admin) — send only changed sections.
       if (settingsDirty && draft && saved && canEditSite) {
         const patch: SettingsPatch = {};
-        (["site", "appearance", "reading", "comments"] as const).forEach((sec) => {
+        (["site", "socials", "reading", "comments"] as const).forEach((sec) => {
           if (JSON.stringify(draft[sec]) !== JSON.stringify(saved[sec])) patch[sec] = draft[sec] as never;
         });
         const next = await updateSettings(patch);
         setSaved(next);
         setDraft(structuredClone(next));
-        applyTheme(next.appearance.theme);
       }
       // Profile (self) — any signed-in user.
       if (profileDirty && profile) {
@@ -229,11 +224,6 @@ export default function SettingsPage() {
       setSaving(false);
     }
   }
-
-  // Apply the chosen theme to the document (persists per-browser; site default comes from settings).
-  useEffect(() => {
-    if (saved?.appearance.theme) applyTheme(saved.appearance.theme);
-  }, [saved?.appearance.theme]);
 
   if (loading) {
     return <div className="mx-auto max-w-6xl rounded-xl border border-slate-200 bg-white px-4 py-24 text-center text-slate-400">Loading settings…</div>;
@@ -361,79 +351,32 @@ export default function SettingsPage() {
             <ProfileTab profile={profile} set={setProfileField} onPickAvatar={() => setAvatarPicker(true)} onError={setError} onNotice={setNotice} />
           )}
 
-          {draft && tab === "appearance" && (
+          {draft && tab === "socials" && (
             <div className="space-y-5">
-              <SectionHead title="Appearance" sub="Theme, fonts and layout of your public site." />
-              <Field label="Theme">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  {([
-                    { v: "light", t: "Light", d: "Default bright theme." },
-                    { v: "dark", t: "Dark", d: "Dark background site-wide." },
-                    { v: "auto", t: "Auto", d: "Follows the reader's system." },
-                  ] as const).map((o) => {
-                    const active = draft.appearance.theme === o.v;
-                    return (
-                      <button
-                        key={o.v}
-                        type="button"
-                        disabled={!canEditSite}
-                        onClick={() => setAppearance("theme", o.v as ThemeMode)}
-                        className={`rounded-lg border p-3 text-left transition disabled:opacity-60 ${active ? "border-brand bg-brand-soft/50 ring-1 ring-brand" : "border-slate-200 hover:bg-slate-50"}`}
-                      >
-                        <span className="flex items-center justify-between">
-                          <span className="text-sm font-semibold text-slate-800">{o.t}</span>
-                          {active && <Check width={15} height={15} className="text-brand" />}
-                        </span>
-                        <span className="mt-0.5 block text-xs text-slate-500">{o.d}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </Field>
-              <Field label="Accent colour" hint="Used for links, buttons and highlights.">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  {ACCENTS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      disabled={!canEditSite}
-                      aria-label={c}
-                      onClick={() => setAppearance("accentColor", c)}
-                      className={`h-7 w-7 rounded-full transition disabled:opacity-60 ${draft.appearance.accentColor.toLowerCase() === c.toLowerCase() ? "ring-2 ring-slate-900 ring-offset-2" : ""}`}
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
+              <SectionHead title="Socials" sub="Links to your official social profiles — shown in the site footer." />
+              {(
+                [
+                  { key: "facebook", label: "Facebook URL", placeholder: "https://facebook.com/yourpage", type: "url" },
+                  { key: "x", label: "X URL", placeholder: "https://x.com/yourhandle", type: "url" },
+                  { key: "linkedin", label: "LinkedIn URL", placeholder: "https://linkedin.com/company/yourpage", type: "url" },
+                  { key: "instagram", label: "Instagram URL", placeholder: "https://instagram.com/yourhandle", type: "url" },
+                  { key: "whatsapp", label: "WhatsApp number", placeholder: "+234 800 000 0000", type: "tel" },
+                  { key: "youtube", label: "YouTube URL", placeholder: "https://youtube.com/@yourchannel", type: "url" },
+                ] as const
+              ).map(({ key, label, placeholder, type }) => (
+                <Field key={key} label={label}>
                   <input
-                    value={draft.appearance.accentColor}
+                    type={type}
+                    inputMode={type === "tel" ? "tel" : "url"}
+                    value={draft.socials[key]}
                     disabled={!canEditSite}
-                    onChange={(e) => setAppearance("accentColor", e.target.value)}
-                    className="w-28 rounded-lg border border-slate-300 px-3 py-1.5 text-sm uppercase text-slate-700 outline-none focus:border-brand disabled:bg-slate-50"
+                    placeholder={placeholder}
+                    onChange={(e) => setSocials(key, e.target.value)}
+                    className={inputCls}
                   />
-                </div>
-              </Field>
-              <div className="grid gap-5 sm:grid-cols-2">
-                <Field label="Heading font">
-                  <Select value={draft.appearance.headingFont} disabled={!canEditSite} onChange={(v) => setAppearance("headingFont", v)}>
-                    {FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
-                  </Select>
                 </Field>
-                <Field label="Body font">
-                  <Select value={draft.appearance.bodyFont} disabled={!canEditSite} onChange={(v) => setAppearance("bodyFont", v)}>
-                    {FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
-                  </Select>
-                </Field>
-              </div>
-              <Field label="Content width">
-                <Select value={draft.appearance.contentWidth} disabled={!canEditSite} onChange={(v) => setAppearance("contentWidth", v as Settings["appearance"]["contentWidth"])}>
-                  <option value="narrow">Narrow — 720px</option>
-                  <option value="standard">Standard — 880px</option>
-                  <option value="wide">Wide — 1080px</option>
-                </Select>
-              </Field>
-              <div className="pt-1">
-                <ToggleRow label="Show cover images in post lists" checked={draft.appearance.showCoverImages} disabled={!canEditSite} onChange={(v) => setAppearance("showCoverImages", v)} />
-                <ToggleRow label="Sticky navigation bar" checked={draft.appearance.stickyNav} disabled={!canEditSite} onChange={(v) => setAppearance("stickyNav", v)} />
-              </div>
+              ))}
+              <p className="text-xs text-slate-400">Leave a field empty to hide that network. Links must be valid http(s) URLs; WhatsApp takes a phone number.</p>
             </div>
           )}
 
@@ -605,17 +548,4 @@ function ProfileTab({
       </div>
     </div>
   );
-}
-
-/* --------------------------------- theme apply -------------------------------- */
-
-function applyTheme(mode: ThemeMode) {
-  if (typeof document === "undefined") return;
-  const resolved = mode === "auto" ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : mode;
-  document.documentElement.dataset.theme = resolved;
-  try {
-    localStorage.setItem("brandish-theme", mode);
-  } catch {
-    /* ignore */
-  }
 }

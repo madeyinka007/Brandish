@@ -4,8 +4,6 @@ import { authFetch } from "./auth";
 
 // Settings admin API (server/routes/admin/settings.ts). Read is editor+, write is super-admin.
 
-export type ThemeMode = "light" | "dark" | "auto";
-export type ContentWidth = "narrow" | "standard" | "wide";
 export type PostListsShow = "excerpt" | "full";
 export type WhoCanComment = "anyone" | "subscribers" | "closed";
 
@@ -22,14 +20,13 @@ export interface SiteSettings {
   enableRss: boolean;
   maintenanceMode: boolean;
 }
-export interface AppearanceSettings {
-  theme: ThemeMode;
-  accentColor: string;
-  headingFont: string;
-  bodyFont: string;
-  contentWidth: ContentWidth;
-  showCoverImages: boolean;
-  stickyNav: boolean;
+export interface SocialsSettings {
+  facebook: string;
+  x: string;
+  linkedin: string;
+  instagram: string;
+  whatsapp: string; // phone number (e.g. +234…), not a URL
+  youtube: string;
 }
 export interface ReadingSettings {
   postListsShow: PostListsShow;
@@ -49,7 +46,7 @@ export interface CommentSettings {
 }
 export interface Settings {
   site: SiteSettings;
-  appearance: AppearanceSettings;
+  socials: SocialsSettings;
   reading: ReadingSettings;
   comments: CommentSettings;
   updatedAt: string | null;
@@ -58,7 +55,7 @@ export interface Settings {
 
 export type SettingsPatch = {
   site?: Partial<SiteSettings>;
-  appearance?: Partial<AppearanceSettings>;
+  socials?: Partial<SocialsSettings>;
   reading?: Partial<ReadingSettings>;
   comments?: Partial<CommentSettings>;
 };

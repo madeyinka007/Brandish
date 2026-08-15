@@ -51,7 +51,22 @@ export async function checkAndSetViewDedup(ip: string, postId: string): Promise<
  * `if_not_exists`, so the window doesn't reset on every attempt — only the first request
  * in a given hour anchors it.
  */
+// LOCAL-DEV FALLBACK — with AUTH_STORE=memory, rate-limit counters live in a process-local Map
+// instead of DynamoDB (no AWS needed for local comment testing). Keep AUTH_STORE unset in prod.
+const memoryRates = new Map<string, { count: number; resetAtSec: number }>();
+
 export async function checkRateLimit(ip: string): Promise<boolean> {
+  if (process.env.AUTH_STORE === 'memory') {
+    const now = Math.floor(Date.now() / 1000);
+    const entry = memoryRates.get(ip);
+    if (!entry || entry.resetAtSec <= now) {
+      memoryRates.set(ip, { count: 1, resetAtSec: now + RATE_LIMIT_WINDOW_SECONDS });
+      return true;
+    }
+    entry.count += 1;
+    return entry.count <= RATE_LIMIT_MAX;
+  }
+
   const result = await client.send(new UpdateItemCommand({
     TableName: RATELIMIT_TABLE,
     Key: { pk: { S: `ratelimit:${ip}` } },

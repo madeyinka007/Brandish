@@ -58,11 +58,11 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 /
 ├── web/                           # Next.js app — runs and deploys independently
 │   ├── app/                       # Next.js App Router
-│   │   ├── page.tsx               # Homepage — featured + recent posts
+│   │   ├── page.tsx               # Homepage (BUILT) — "Smart Times" editorial design, Brandish-branded. Server component; getHomeData() (ISR 5m) pulls settings/categories/posts from the public REST API and partitions them into hero/trending/just-in/category bands/quad; real coverImage via next/image with hatch fallback; generateMetadata from settings. Composed from components/public/*
 │   │   ├── [category]/
-│   │   │   ├── page.tsx           # Category listing (ISR)
+│   │   │   ├── page.tsx           # Category listing (BUILT — Smart Times Category design) — shared SiteHeader/Footer + breadcrumb/title + CategoryListing (9/3: feature/two-up/list-rows/numbered pagination via ?page= | sidebar: featured/Editors Picks/Latest Posts/newsletter/MPU). getCategoryPageData (ISR); notFound() for unknown slug. All category links (nav/tags/quad/footer) resolve here
 │   │   │   └── [slug]/
-│   │   │       └── page.tsx       # Post page (ISR)
+│   │   │       └── page.tsx       # Post detail (BUILT — Smart Times Post design) — 56/885/285 band: sticky ShareRail | article (hero + PostBody[Tiptap→styled] + author box + Keep Reading + approved comments) | shared sidebar widgets. getPostPageData (ISR); breadcrumb/byline (reading-time, comment count); generateMetadata + JSON-LD (NewsArticle+BreadcrumbList); notFound() on missing slug or wrong-category URL. All post links (postHref → /[category]/[slug]) resolve here
 │   │   ├── search/
 │   │   │   └── page.tsx           # Search results (SSR — dynamic query)
 │   │   ├── newsletter/
@@ -85,12 +85,31 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │           ├── taxonomy/page.tsx              # Tags/Taxonomy (Figma 94:510) — full CRUD on /api/admin/tags (create/edit form + list + inline delete)
 │   │           ├── comments/page.tsx              # Comments moderation (Figma 114:486) — GET /api/admin/comments; stat cards, status tabs, bulk approve/spam/delete, per-comment approve/unapprove/spam/delete; fires BADGE_REFRESH_EVENT
 │   │           ├── analytics/page.tsx             # Analytics dashboard (Figma 135:494) — GET /api/admin/analytics?days=; stat cards+sparklines, SVG traffic area chart, sources donut, top posts, device bars, top countries; range selector + CSV export
-│   │           ├── settings/page.tsx              # Settings (Figma 188:444) — 5 tabs: Site/Appearance/Reading/Comments → GET/PUT /api/admin/settings (singleton); Profile → GET/PUT /api/auth/me + change-password. Shared Save/Discard header + dirty tracking; site tabs read-only for non-super-admin; theme applier (light/dark/auto)
+│   │           ├── settings/page.tsx              # Settings (Figma 188:444) — 5 tabs: Site/Socials/Reading/Comments → GET/PUT /api/admin/settings (singleton); Profile → GET/PUT /api/auth/me + change-password. Socials = facebook/x/linkedin/instagram/youtube URLs + whatsapp number (footer). Shared Save/Discard header + dirty tracking; site tabs read-only for non-super-admin
 │   │           └── [section]/page.tsx  # Placeholder for the remaining sections (/admin/posts, /admin/comments, …)
 │   │   # ([category]/ and search/ public-blog pages are planned; their empty placeholder files were removed during the admin build)
 │   │
 │   ├── components/
-│   │   ├── PostCard.tsx           # (public blog — planned)
+│   │   ├── public/                # Public homepage UI (BUILT — "Smart Times" editorial design)
+│   │   │   ├── icons.tsx          # Tabler Icons (@tabler/icons-react) thin wrappers — stroke 2, currentColor, default size 20 — per the design system + SOCIAL list
+│   │   │   ├── primitives.tsx     # Media (next-image + hatch fallback), Tag, MetaRow, SectionLabel (h2), ReadMore
+│   │   │   ├── cards.tsx          # Card/Article variants: Hero, Feature, Stacked, ListRow, Compact, MiniHeadline, Ranked, TrendingItem
+│   │   │   ├── sections.tsx       # Homepage band compositions: TrendingStrip, HeroBand (6/3/3), FeatureBand (9/3 "Corporate Brand"), MoneyTechBand (9/3 two-section + Editors Picks), CategoryQuad
+│   │   │   ├── CategoryListing.tsx# Category 9/3 band (feature/two-up/list-rows/numbered pagination) + sidebar (widgets.tsx)
+│   │   │   ├── PostBody.tsx       # posts.body (Tiptap JSON) → styled article (paras/H2-3/lists/links/pull-quote/figure/code)
+│   │   │   ├── ShareRail.tsx      # (client) sticky vertical share rail — reads window URL for share intents
+│   │   │   ├── VideoEmbed.tsx     # Responsive youtube-nocookie iframe — hero for format='video' posts
+│   │   │   ├── CommentForm.tsx    # (client) public comment submit → POST /api/comments (reCAPTCHA v3 when NEXT_PUBLIC_RECAPTCHA_SITE_KEY set); stored `pending`, shown after moderation
+│   │   │   ├── widgets.tsx        # Shared sidebar widgets: EditorsPicksWidget/LatestPostsWidget/NewsletterWidget/MpuAd (category + post pages)
+│   │   │   ├── SiteHeader.tsx     # (client) utility bar + masthead (logo/settings) + primary nav; hosts Ticker/ThemeToggle/SearchOverlay/MobileMenu
+│   │   │   ├── SiteFooter.tsx     # Brand + socials + link grid + newsletter (id=newsletter) + legal
+│   │   │   ├── Ticker.tsx         # (client) rotating trending headline (reduced-motion aware)
+│   │   │   ├── ThemeToggle.tsx    # (client) light/dark via data-theme + brandish-theme localStorage
+│   │   │   ├── SearchOverlay.tsx  # (client) client-side search over loaded posts (no search API yet)
+│   │   │   ├── MobileMenu.tsx     # (client) off-canvas nav
+│   │   │   ├── NewsletterForm.tsx # (client) POST /api/newsletter (degrades gracefully — route not mounted yet)
+│   │   │   └── AdSlot.tsx         # Reserved, labelled advertisement placeholder (no CLS)
+│   │   ├── PostCard.tsx           # (public post/category/comment pages — planned; empty scaffolds)
 │   │   ├── PostBody.tsx
 │   │   ├── ShareBar.tsx           # Client-side share: X, LinkedIn, WhatsApp, Facebook
 │   │   ├── ViewCounter.tsx        # Fires POST /views/:id on mount (non-blocking)
@@ -123,6 +142,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── analytics.ts           # Analytics admin API client — getAnalytics(days) → overview (summary/timeseries/sources/devices/topPosts/topCountries) (built)
 │   │   ├── settings.ts            # Settings admin API client — getSettings/updateSettings(patch) for the site/appearance/reading/comments singleton (built)
 │   │   ├── profile.ts             # Self-profile client — getMe/updateProfile (mirrors name/avatar/email into the session)/changePassword via /api/auth/me (built)
+│   │   ├── site.ts                # Public homepage data layer (server) — ISR fetchers (getSettings/getCategories/getPublishedPosts) over the public REST API + getHomeData() partitioning + postHref/formatDate/labelForCategory helpers (built)
 │   │   ├── mongodb.ts             # Cached MongoClient for Next.js server components (public blog — planned)
 │   │   ├── mongoose.ts            # Cached Mongoose connection for Next.js server components
 │   │   ├── models/                # Mongoose models — identical copy of server/lib/models/
@@ -246,7 +266,8 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── seedSuperAdmin.ts       # Bootstrap the first super-admin — `npm run seed:admin`; see docs/auth.md
 │   │   ├── seedCategories.ts       # Seed the 10 launch categories — `npm run seed:categories`
 │   │   ├── seedComments.ts         # Seed ~14 demo comments across posts (mixed pending/approved/spam) — `npm run seed:comments`; idempotent by authorEmail
-│   │   └── seedAnalytics.ts        # Seed demo page_views (visitor pool → realistic unique/bounce) + sync posts.viewCount — `npm run seed:analytics`; idempotent by `_demo` flag
+│   │   ├── seedAnalytics.ts        # Seed demo page_views (visitor pool → realistic unique/bounce) + sync posts.viewCount — `npm run seed:analytics`; idempotent by `_demo` flag
+│   │   └── seedPosts.ts            # Enrich existing posts (long excerpt/body + cover) + top up to 100 published across all categories — `npm run seed:posts`; demo posts flagged `seedDemo`, covers are picsum.photos placeholders
 │   │
 │   ├── __tests__/                 # Jest unit tests — mirrors routes/controllers/services/middleware/lib/scripts; DB/AWS clients mocked
 │   │   ├── bootstrap.test.ts
@@ -276,7 +297,8 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   │   ├── seedSuperAdmin.test.ts
 │   │   │   ├── seedCategories.test.ts
 │   │   │   ├── seedComments.test.ts
-│   │   │   └── seedAnalytics.test.ts
+│   │   │   ├── seedAnalytics.test.ts
+│   │   │   └── seedPosts.test.ts
 │   │   ├── middleware/
 │   │   │   ├── auth.test.ts
 │   │   │   ├── recaptcha.test.ts

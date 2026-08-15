@@ -9,6 +9,43 @@
   --color-sidebar: #17172b; /* dark navy sidebar / login left panel */
   --color-sidebar-accent: #23233d;
   --color-canvas: #f6f7f9; /* app background */
+
+  /* ── Public site ("Smart Times" editorial system) — see docs + design system ── */
+  --color-ink-900: #111111; /* titles · bars · footer text */
+  --color-ink-700: #3a3a3a; /* body copy */
+  --color-ink-600: #565656;
+  --color-ink-500: #6e6e6e; /* excerpts · deks */
+  --color-ink-400: #767676; /* dates · captions (AA floor 4.54:1) */
+  --color-ink-300: #cfcfcf; /* rank numerals · em-dash */
+  --color-surface: #ffffff;
+  --color-surface-alt: #f4f4f4; /* ticker · ad well · newsletter */
+  --color-surface-media: #ededed; /* image placeholder */
+  --color-surface-footer: #212121; /* footer band — not ink-900 */
+  --color-line: #e4e4e4; /* 1px hairlines */
+  --color-line-strong: #dddddd;
+  --color-accent: #e1112c; /* tags · CTA · active — the only accent */
+  --color-accent-hover: #b00d22;
+  --color-accent-wash: #fce8ea;
+  --color-field-dark: #333333;
+
+  --font-serif: var(--font-plex-serif), Georgia, "Times New Roman", serif;
+}
+
+/* Dark theme — variable overrides only; every public utility that reads these tokens flips.
+   Scoped by data-theme on <html> (set by the no-FOUC script + ThemeToggle). Higher specificity
+   than :root so it wins. Admin utilities use different tokens, so the admin is unaffected. */
+:root[data-theme="dark"] {
+  --color-surface: #141414;
+  --color-surface-alt: #1c1c1c;
+  --color-surface-media: #262626;
+  --color-line: #2e2e2e;
+  --color-line-strong: #3a3a3a;
+  --color-ink-900: #f2f2f2;
+  --color-ink-700: #d6d6d6;
+  --color-ink-600: #b9b9b9;
+  --color-ink-500: #a8a8a8;
+  --color-ink-400: #8f8f8f;
+  --color-ink-300: #4a4a4a;
 }
 
 html,
@@ -95,4 +132,45 @@ body {
   float: left;
   height: 0;
   pointer-events: none;
+}
+
+/* ── Public site base ──────────────────────────────────────────────────────── */
+.site {
+  /* Inter for all UI/body copy (headlines use font-serif = IBM Plex Serif). */
+  font-family: var(--font-inter), system-ui, sans-serif;
+  background: var(--color-surface);
+  color: var(--color-ink-900);
+}
+/* Neutralise the UA link colour in the `base` layer so any text-* utility (e.g. text-white on
+   the Subscribe button) still wins — an unlayered rule here would out-specify utilities. */
+@layer base {
+  .site a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+/* Theme-aware logo swap in the masthead. */
+.logo-dark {
+  display: none;
+}
+:root[data-theme="dark"] .logo-light {
+  display: none;
+}
+:root[data-theme="dark"] .logo-dark {
+  display: block;
+}
+/* Diagonal hatch — the design's image empty-state, used when a post has no coverImage. */
+.hatch {
+  background-color: var(--color-surface-media);
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--color-line) 0 8px,
+    var(--color-surface-media) 8px 16px
+  );
+}
+@media (prefers-reduced-motion: reduce) {
+  .ticker-fade {
+    transition: none !important;
+    opacity: 1 !important;
+  }
 }

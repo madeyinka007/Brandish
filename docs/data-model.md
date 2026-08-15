@@ -434,7 +434,7 @@ save. Holds *behaviour and presentation only* — **never secrets** (Mongo URI, 
 SES/AWS keys, the reCAPTCHA *secret* stay in SSM Parameter Store; see
 [`docs/aws-infrastructure.md`](aws-infrastructure.md)).
 
-Sections mirror the admin **Settings** page tabs (Figma 188:444) — **Site**, **Appearance**,
+Sections mirror the admin **Settings** page tabs (Figma 188:444) — **Site**, **Socials**,
 **Reading**, **Comments**. The page's fifth tab, **Profile**, is *not* stored here: it edits the
 signed-in user's own `users` record via `/api/auth/me` (see below).
 
@@ -454,14 +454,13 @@ signed-in user's own `users` record via `/api/auth/me` (see below).
     enableRss:         boolean,
     maintenanceMode:   boolean,     // when true, the public blog serves a maintenance page
   },
-  appearance: {
-    theme:           'light' | 'dark' | 'auto',  // display mode — site default (see the settings & theme flow)
-    accentColor:     string,        // #RRGGBB — links, buttons, highlights
-    headingFont:     string,
-    bodyFont:        string,
-    contentWidth:    'narrow' | 'standard' | 'wide',
-    showCoverImages: boolean,
-    stickyNav:       boolean,
+  socials: {                        // official social profiles/contacts — rendered in the site footer
+    facebook:        string,        // full http(s) URL, or '' to hide
+    x:               string,        // full http(s) URL, or '' to hide
+    linkedin:        string,        // full http(s) URL, or '' to hide
+    instagram:       string,        // full http(s) URL, or '' to hide
+    whatsapp:        string,        // phone number (e.g. '+2348030001234'), or '' to hide — NOT a URL
+    youtube:         string,        // full http(s) URL, or '' to hide
   },
   reading: {
     postListsShow:    'excerpt' | 'full',

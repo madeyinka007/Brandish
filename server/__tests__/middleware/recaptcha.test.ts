@@ -9,12 +9,31 @@ function mockRes() {
 
 const originalFetch = global.fetch;
 
+beforeEach(() => {
+  // The real verification path only runs when a secret is configured (prod). Set one so the
+  // existing cases exercise it; the no-secret dev bypass is covered separately below.
+  process.env.RECAPTCHA_SECRET = 'test-secret';
+});
+
 afterEach(() => {
   global.fetch = originalFetch;
+  delete process.env.RECAPTCHA_SECRET;
   jest.restoreAllMocks();
 });
 
 describe('validateRecaptcha', () => {
+  test('dev bypass — calls next() when RECAPTCHA_SECRET is unset (no verification, no token required)', async () => {
+    delete process.env.RECAPTCHA_SECRET;
+    const req: any = { body: {} };
+    const res = mockRes();
+    const next = jest.fn();
+
+    await validateRecaptcha(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
   test('400 MISSING_RECAPTCHA_TOKEN when no token is present', async () => {
     const req: any = { body: {} };
     const res = mockRes();
