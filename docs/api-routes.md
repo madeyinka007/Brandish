@@ -68,14 +68,14 @@ it (`401 NO_SESSION` if absent, `401 INVALID_TOKEN` if invalid/expired).
 | `GET` | `/api/posts/:slug` | Single post by slug |
 | `GET` | `/api/comments?postId=` | Approved comments for a post. Always filters `status: "approved"` |
 | `POST` | `/api/comments` | Submit comment — reCAPTCHA v3 validation + IP rate limit enforced before write |
-| `POST` | `/api/views/:id` | Increment view count — DynamoDB conditional write deduplicates per IP per 24h |
+| `POST` | `/api/views/:id` | Record a post view — appends a `page_views` event (every hit) and increments `posts.viewCount` once per IP per 24h (DynamoDB conditional write dedup). Body: `{ referrer?: string }` (the real traffic source; falls back to the `Referer` header) |
 | `POST` | `/api/newsletter` | Subscribe — saves unconfirmed subscriber, sends SES confirmation email |
 | `GET` | `/api/newsletter/confirm?token=` | Confirm subscription — sets `confirmedAt`, clears token |
 | `GET` | `/api/newsletter/unsubscribe?token=` | Unsubscribe — sets `active: false` |
 | `GET` | `/api/categories` | List **active** categories, ordered — for nav/filter UI |
 | `GET` | `/api/tags` | List all tags (name, slug) — for tag-cloud/filter UI |
 | `GET` | `/api/search?q=` | Search published posts by title/excerpt. Query params: `?q=&page=&limit=` |
-| `GET` | `/api/settings` | Public-safe site settings — `site` (title/tagline/logo/language/timezone/postsPerPage/maintenance/enable flags), `appearance` (theme mode, accent, fonts, layout), `reading`, and `comments` (whoCanComment + nestingDepth only). **Never** returns secrets, moderation flags, or `updatedBy` |
+| `GET` | `/api/settings` | Public-safe site settings — `site` (title/tagline/logo/language/timezone/postsPerPage/maintenance/enable flags), `socials` (facebook/x/linkedin/instagram/whatsapp/youtube), `reading`, and `comments` (whoCanComment + nestingDepth only). **Never** returns secrets, moderation flags, or `updatedBy` |
 
 ### Notes on public routes
 
@@ -87,9 +87,11 @@ it (`401 NO_SESSION` if absent, `401 INVALID_TOKEN` if invalid/expired).
 5. `insertOne` with `status: "pending"`
 6. Send SES alert to `ADMIN_ALERT_EMAIL`
 
-**`POST /api/views/:id`** — always returns `200` regardless of dedup outcome.
-The response does not indicate whether the view was counted. Non-blocking from the
-client perspective — fired after page load, not awaited.
+**`POST /api/views/:id`** — always returns `204` (best-effort; a bad `:id` or a storage
+failure is swallowed so tracking can never break the reader's page). The response does not
+indicate whether the deduped `viewCount` was incremented. Non-blocking from the client
+perspective — fired once on page load by `web/components/public/ViewCounter.tsx`, not awaited.
+Locally, set `AUTH_STORE=memory` to exercise the dedup without DynamoDB.
 
 **`POST /api/newsletter`** — idempotent on email. If the email already exists with
 `active: true` and `confirmedAt` set, return `200` without re-sending. If previously

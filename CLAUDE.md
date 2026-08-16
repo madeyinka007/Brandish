@@ -99,6 +99,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   │   ├── PostBody.tsx       # posts.body (Tiptap JSON) → styled article (paras/H2-3/lists/links/pull-quote/figure/code)
 │   │   │   ├── ShareRail.tsx      # (client) sticky vertical share rail — reads window URL for share intents
 │   │   │   ├── VideoEmbed.tsx     # Responsive youtube-nocookie iframe — hero for format='video' posts
+│   │   │   ├── ViewCounter.tsx    # (client) fires POST /api/views/:id once on post load (keepalive; sends document.referrer) — feeds analytics. Mounted on the post detail page
 │   │   │   ├── CommentForm.tsx    # (client) public comment submit → POST /api/comments (reCAPTCHA v3 when NEXT_PUBLIC_RECAPTCHA_SITE_KEY set); stored `pending`, shown after moderation
 │   │   │   ├── widgets.tsx        # Shared sidebar widgets: EditorsPicksWidget/LatestPostsWidget/NewsletterWidget/MpuAd (category + post pages)
 │   │   │   ├── SiteHeader.tsx     # (client) utility bar + masthead (logo/settings) + primary nav; hosts Ticker/ThemeToggle/SearchOverlay/MobileMenu
@@ -180,7 +181,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── auth.ts                 # /api/auth/* — login, refresh, logout, GET/PUT /me (self-profile), password, verify (see docs/auth.md)
 │   │   ├── posts.ts
 │   │   ├── comments.ts 
-│   │   ├── views.ts
+│   │   ├── views.ts                 # POST /api/views/:id — public view tracking (write side of analytics); no auth
 │   │   ├── newsletter.ts
 │   │   ├── categories.ts
 │   │   ├── tags.ts
@@ -204,6 +205,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── auth.ts
 │   │   ├── posts.ts
 │   │   ├── comments.ts
+│   │   ├── views.ts                # recordView — client ip (x-forwarded-for) + UA + body.referrer → viewsService; always 204 (swallows errors)
 │   │   ├── users.ts
 │   │   ├── newsletter.ts
 │   │   ├── categories.ts
@@ -218,6 +220,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── auth.ts                  # login/logout/refresh (rotation)/forgot/reset/change/verify + getProfile/updateProfile (/me) — see docs/auth.md
 │   │   ├── posts.ts
 │   │   ├── comments.ts              # Mongoose Comment model; public createComment (strips HTML via sanitize-html, stores `pending`) + admin list/setStatus/delete moderation
+│   │   ├── views.ts                 # Native-driver — recordView: append page_views event (every hit) + deduped `$inc posts.viewCount` (checkAndSetViewDedup); best-effort (bad id → no-op). Write side of analytics
 │   │   ├── users.ts
 │   │   ├── newsletter.ts
 │   │   ├── categories.ts
@@ -336,7 +339,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   ├── auth.md                    # Authentication (API-owned JWT), roles, and middleware patterns
 │   ├── openapi-auth.yaml          # OpenAPI 3.1 spec for the /api/auth endpoints
 │   ├── aws-infrastructure.md      # AWS services, env vars, CI/CD, cost
-│   ├── workflows.md               # Core flows: ISR, media, comments, newsletter, settings & theme (light/dark)
+│   ├── workflows.md               # Core flows: ISR, media, comments, view counting, newsletter, settings & theme (light/dark)
 │   └── development.md             # Local dev setup, conventions, slug generation
 │
 └── CLAUDE.md                      # This file
@@ -353,5 +356,5 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 | [`docs/auth.md`](docs/auth.md) | Role definitions, API-owned JWT auth (access + rotating refresh tokens), auth flows, middleware |
 | [`docs/openapi-auth.yaml`](docs/openapi-auth.yaml) | OpenAPI 3.1 spec for the `/api/auth` endpoints |
 | [`docs/aws-infrastructure.md`](docs/aws-infrastructure.md) | AWS services, all environment variables, CI/CD pipeline, cost estimates |
-| [`docs/workflows.md`](docs/workflows.md) | MongoDB connection pattern, ISR revalidation, media upload, comment moderation, newsletter send, settings & theme (light/dark display mode) |
+| [`docs/workflows.md`](docs/workflows.md) | MongoDB connection pattern, ISR revalidation, media upload, comment moderation, post view counting (page_views + deduped viewCount), newsletter send, settings & theme (light/dark display mode) |
 | [`docs/development.md`](docs/development.md) | Local dev commands, key conventions, slug generation |

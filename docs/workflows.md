@@ -342,6 +342,51 @@ const token = jwt.sign(
 
 ---
 
+## Post view counting flow
+
+The write side of analytics. A reader opening a post triggers one fire-and-forget request; the
+API logs the raw event and increments a per-IP-deduped display counter. The admin analytics
+dashboard reads the `page_views` log (see `docs/data-model.md` and `server/services/analytics.ts`).
+
+```
+Post detail page loads (web/app/[category]/[slug]/page.tsx)
+  → <ViewCounter postId> mounts (web/components/public/ViewCounter.tsx)
+    → POST {API}/api/views/:id  { referrer: document.referrer }   // once, keepalive, not awaited
+
+routes/views.ts → controllers/views.ts (recordView)
+  1. clientIp = first hop of x-forwarded-for (falls back to req.ip)
+  2. referrer = body.referrer (the real source) ?? Referer header ?? null
+  3. userAgent = User-Agent header
+  → services/views.ts recordView(postId, { ip, userAgent, referrer })
+
+services/views.ts:
+  a. Invalid ObjectId → no-op, return false (never throws — best-effort)
+  b. insertOne into `page_views`  { postId, ip, userAgent, referrer, dwellSec:0, viewedAt }
+     — EVERY hit is logged (analytics counts total views + derives unique/bounce from IPs)
+  c. checkAndSetViewDedup(ip, postId)  (DynamoDB conditional write, 24h TTL)
+       first in window → $inc posts.viewCount by 1
+       duplicate       → skip the increment (event still logged)
+
+Controller always responds 204 — a bad id or storage error is swallowed so tracking
+never breaks the reader's page.
+```
+
+**`page_views` (raw log) vs `posts.viewCount` (display counter).** `page_views` records every
+request — refreshes included — because the analytics service needs the raw event stream to
+compute total views, unique visitors (distinct IPs) and bounce rate. `posts.viewCount` is the
+human-facing number and is deduped per IP per 24h via the DynamoDB `view_dedup` table.
+
+**Local dev.** View-dedup normally requires DynamoDB. Set `AUTH_STORE=memory` (the same local
+dev switch used by the refresh-token and rate-limit stores) to keep the dedup in a process-local
+Map, so the whole pipeline works locally with no AWS — `page_views` still writes to MongoDB and
+`viewCount` still increments. Keep `AUTH_STORE` unset in production.
+
+**Not yet captured: `dwellSec`.** The client fires once on load and sends `dwellSec: 0`, so the
+dashboard's "avg. time on page" reads 0. Add an unload `navigator.sendBeacon` that updates the
+event's `dwellSec` to light that panel up (every other analytics panel works from the load event).
+
+---
+
 ## Newsletter send flow
 
 ```

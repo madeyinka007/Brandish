@@ -17,6 +17,7 @@ import SiteFooter from "@/components/public/SiteFooter";
 import AdSlot from "@/components/public/AdSlot";
 import PostBody from "@/components/public/PostBody";
 import ShareRail from "@/components/public/ShareRail";
+import ViewCounter from "@/components/public/ViewCounter";
 import VideoEmbed from "@/components/public/VideoEmbed";
 import CommentForm from "@/components/public/CommentForm";
 import { Media } from "@/components/public/primitives";
@@ -114,6 +115,7 @@ export default async function PostPage({ params }: Params) {
   return (
     <div className="site min-h-screen">
       <SiteHeader {...header} />
+      <ViewCounter postId={post._id} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
       <main>

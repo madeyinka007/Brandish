@@ -25,7 +25,20 @@ const RATE_LIMIT_MAX = 3;
  * proceed to `$inc posts.viewCount`. Returns `false` on a duplicate within the window —
  * the caller should skip the increment (see docs/workflows.md's view-count flow).
  */
+// LOCAL-DEV FALLBACK — with AUTH_STORE=memory, view-dedup uses a process-local Map instead of
+// DynamoDB (no AWS needed to exercise view counting locally). Keep AUTH_STORE unset in prod.
+const memoryDedup = new Map<string, number>(); // `view:ip:postId` → expiry (unix seconds)
+
 export async function checkAndSetViewDedup(ip: string, postId: string): Promise<boolean> {
+  if (process.env.AUTH_STORE === 'memory') {
+    const now = Math.floor(Date.now() / 1000);
+    const key = `view:${ip}:${postId}`;
+    const exp = memoryDedup.get(key);
+    if (exp && exp > now) return false; // seen within the TTL window → duplicate
+    memoryDedup.set(key, now + VIEW_DEDUP_TTL_SECONDS);
+    return true;
+  }
+
   try {
     await client.send(new PutItemCommand({
       TableName: DEDUP_TABLE,

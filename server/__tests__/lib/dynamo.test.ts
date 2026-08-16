@@ -184,3 +184,25 @@ describe('refresh-token store — in-memory fallback (AUTH_STORE=memory)', () =>
     await expect(store.consumeRefreshToken('tok2')).resolves.toBeNull();
   });
 });
+
+describe('checkAndSetViewDedup — in-memory fallback (AUTH_STORE=memory)', () => {
+  // Unlike the refresh-token store, view-dedup checks AUTH_STORE at CALL time, so a runtime
+  // toggle (no module reload) selects the in-process Map path. If the fallback were NOT taken
+  // these would hit a real DynamoDBClient (no creds) and reject — so the resolved booleans prove
+  // the memory branch runs, with zero AWS I/O.
+  let prev: string | undefined;
+  beforeEach(() => {
+    prev = process.env.AUTH_STORE;
+    process.env.AUTH_STORE = 'memory';
+  });
+  afterEach(() => {
+    process.env.AUTH_STORE = prev;
+  });
+
+  test('first (ip, post) returns true; a repeat within the window returns false; other keys independent', async () => {
+    await expect(checkAndSetViewDedup('5.5.5.5', 'postA')).resolves.toBe(true);
+    await expect(checkAndSetViewDedup('5.5.5.5', 'postA')).resolves.toBe(false);
+    await expect(checkAndSetViewDedup('5.5.5.5', 'postB')).resolves.toBe(true); // different post
+    await expect(checkAndSetViewDedup('6.6.6.6', 'postA')).resolves.toBe(true); // different ip
+  });
+});
