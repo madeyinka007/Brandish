@@ -17,7 +17,7 @@ import { ChevronRight } from "@/components/public/icons";
 
 export const revalidate = 300;
 
-const PAD = "px-4 sm:px-8 lg:px-16 xl:px-[120px]";
+const PAD = "px-5 tab:px-8 lap:px-10 wide:px-[120px]";
 
 const LEAD =
   "Brandish is an eponymously named publication of Brandish Media & Communications Ltd. Our area of focus is marketing communications. Everything concerning branding, marketing, sales, and the creation of successful and enduring enterprises captures our interest.";

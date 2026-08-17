@@ -12,10 +12,16 @@ import {
 import { Media, MetaRow, ReadMore, SectionLabel } from "./primitives";
 import AdSlot from "./AdSlot";
 
-const PAD = "px-4 sm:px-8 lg:px-16 xl:px-[120px]";
-const RULE = "lg:border-l lg:border-line lg:pl-[30px]";
+const PAD = "px-5 tab:px-8 lap:px-10 wide:px-[120px]";
+// Rail separator: a top rule while the rail is stacked (mobile/tablet), swapped for the left
+// rule + indent once it sits beside the stream at `lap` (992) — the design's responsive rails.
+const RULE = "border-t border-line pt-8 lap:border-t-0 lap:pt-0 lap:border-l lap:pl-[30px]";
 const titleLink = "transition-colors hover:text-accent";
-const FEATURE_COLS = "grid grid-cols-1 items-start gap-[30px] lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]";
+// The design's responsive gutter (16 / 24 / 30) and section rhythm (--band: 40 / 60).
+const COLGAP = "gap-4 tab:gap-6 lap:gap-[30px]";
+const BAND = "pt-10 tab:pt-[60px]";
+// Feature split (media beside text): stacks ≤991, 1fr·1.1fr at 992, fixed 420px column at 1440.
+const FEATURE_COLS = "grid grid-cols-1 items-start gap-[30px] lap:grid-cols-[1fr_1.1fr] fixed:grid-cols-[minmax(0,420px)_minmax(0,1fr)]";
 
 interface WithCats {
   categories: Category[];
@@ -25,9 +31,10 @@ interface WithCats {
 export function TrendingStrip({ posts, categories }: { posts: Post[] } & WithCats) {
   if (posts.length === 0) return null;
   return (
-    <div className="bg-surface-alt">
+    // Hidden on mobile (design hides the trending strip ≤767); 2-up on tablet, 4-up at lap.
+    <div className="hidden bg-surface-alt tab:block">
       <div className={`${PAD} py-5`}>
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className={`grid grid-cols-2 lap:grid-cols-4 ${COLGAP}`}>
           {posts.map((p) => (
             <TrendingItem key={p._id} post={p} categories={categories} />
           ))}
@@ -58,10 +65,12 @@ export function HeroBand({
 } & WithCats) {
   if (!lead) return null;
   return (
-    <section className={`${PAD} pt-10 sm:pt-16`} aria-label="Top stories">
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-[30px]">
+    <section className={`${PAD} ${BAND}`} aria-label="Top stories">
+      {/* Mobile (<768): single column. Tablet (768–991): lead full-width, then the two rails
+          side by side. Desktop (≥992): 1.7fr·1fr·1fr, hardening to 585px·1fr·1fr at ≥1440. */}
+      <div className={`grid grid-cols-1 tab:grid-cols-2 lap:grid-cols-[1.7fr_1fr_1fr] fixed:grid-cols-[585px_1fr_1fr] ${COLGAP}`}>
         {/* Col 1 — lead + list */}
-        <div className="flex flex-col gap-10 lg:col-span-6">
+        <div className="flex flex-col gap-10 tab:col-span-2 lap:col-span-1">
           <HeroCard post={lead} categories={categories} />
           {heroRows.length > 0 ? (
             <div className="flex flex-col gap-5">
@@ -73,7 +82,7 @@ export function HeroBand({
         </div>
 
         {/* Col 2 — secondary feature + opinion */}
-        <div className={`flex flex-col gap-10 lg:col-span-3 ${RULE}`}>
+        <div className={`flex flex-col gap-10 tab:col-span-1 ${RULE}`}>
           {secondary ? (
             <div className="flex flex-col gap-5">
               <FeatureCard post={secondary} categories={categories} ratio="aspect-[4/3]" titleSize="text-[20px]" readMore={false} />
@@ -101,7 +110,7 @@ export function HeroBand({
         </div>
 
         {/* Col 3 — just in + stacked */}
-        <div className={`flex flex-col gap-10 lg:col-span-3 ${RULE}`}>
+        <div className={`flex flex-col gap-10 tab:col-span-1 ${RULE}`}>
           <div className="flex flex-col gap-5">
             <SectionLabel>Just In</SectionLabel>
             {justIn.map((p) => (
@@ -125,10 +134,10 @@ export function HeroBand({
 function FeatureSplit({ post, categories }: { post: Post } & WithCats) {
   const href = postHref(post);
   return (
-    <div className="flex flex-col gap-[30px] sm:flex-row sm:items-start">
-      <div className="flex flex-col gap-4 sm:max-w-[420px] sm:flex-1">
+    <div className="flex flex-col gap-[30px] lap:flex-row lap:items-start">
+      <div className="flex flex-col gap-4 lap:max-w-[420px] lap:flex-1">
         <Link href={href} className="transition-colors hover:text-accent">
-          <h3 className="text-pretty font-serif text-[22px] font-bold leading-[1.22] sm:text-[26px]">{post.title}</h3>
+          <h3 className="text-pretty font-serif text-[21px] font-bold leading-[1.22] tab:text-[26px]">{post.title}</h3>
         </Link>
         <MetaRow label={labelForCategory(post.category, categories)} href={categoryHref(post.category)} date={formatDate(post)} />
         {post.excerpt ? <p className="line-clamp-3 text-[14px] leading-[1.6] text-ink-500">{post.excerpt}</p> : null}
@@ -136,7 +145,7 @@ function FeatureSplit({ post, categories }: { post: Post } & WithCats) {
           <ReadMore href={href} />
         </div>
       </div>
-      <Link href={href} aria-hidden="true" tabIndex={-1} className="w-full sm:flex-1">
+      <Link href={href} aria-hidden="true" tabIndex={-1} className="w-full lap:flex-1">
         <Media post={post} className="aspect-[3/2]" sizes="(max-width: 768px) 100vw, 460px" badge />
       </Link>
     </div>
@@ -152,7 +161,7 @@ function FeatureVertical({ post, categories }: { post: Post } & WithCats) {
         <Media post={post} className="aspect-[3/2]" sizes="(max-width: 768px) 100vw, 420px" badge />
       </Link>
       <Link href={href} className={titleLink}>
-        <h3 className="text-pretty font-serif text-[22px] font-bold leading-[1.22] sm:text-[26px]">{post.title}</h3>
+        <h3 className="text-pretty font-serif text-[21px] font-bold leading-[1.22] tab:text-[26px]">{post.title}</h3>
       </Link>
       <MetaRow label={labelForCategory(post.category, categories)} href={categoryHref(post.category)} date={formatDate(post)} />
       {post.excerpt ? <p className="line-clamp-3 text-[14px] leading-[1.6] text-ink-500">{post.excerpt}</p> : null}
@@ -234,14 +243,14 @@ export function FeatureBand({
   side: Post[];
 } & WithCats) {
   return (
-    <section className={`${PAD} pt-10 sm:pt-16`} aria-label={label}>
+    <section className={`${PAD} ${BAND}`} aria-label={label}>
       <div className="flex flex-col gap-6">
         <SectionLabel href={href}>{label}</SectionLabel>
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-[30px]">
-          <div className="flex flex-col gap-10 lg:col-span-9">
+        <div className="grid grid-cols-1 lap:grid-cols-[2.4fr_1fr] fixed:grid-cols-[885px_1fr] gap-4 tab:gap-6 lap:gap-[30px]">
+          <div className="flex flex-col gap-10">
             <FeatureSplit post={feature} categories={categories} />
             {sub.length > 0 ? (
-              <div className="grid grid-cols-1 gap-[30px] border-t border-line pt-6 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-[30px] border-t border-line pt-6 tab:grid-cols-3">
                 {sub.map((p) => (
                   <div key={p._id} className="flex flex-col gap-2">
                     <Link href={postHref(p)} className={titleLink}>
@@ -254,7 +263,7 @@ export function FeatureBand({
               </div>
             ) : null}
           </div>
-          <div className={`flex flex-col gap-5 lg:col-span-3 ${RULE}`}>
+          <div className={`flex flex-col gap-5 ${RULE}`}>
             {side.map((p) => (
               <CompactRow key={p._id} post={p} />
             ))}
@@ -292,10 +301,10 @@ export function MoneyTechBand({
   const [sLead, ...sRows] = secondary;
 
   return (
-    <section className={`${PAD} pt-10 sm:pt-16`} aria-label={primaryLabel}>
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-[30px]">
+    <section className={`${PAD} ${BAND}`} aria-label={primaryLabel}>
+      <div className="grid grid-cols-1 lap:grid-cols-[2.4fr_1fr] fixed:grid-cols-[885px_1fr] gap-4 tab:gap-6 lap:gap-[30px]">
         {/* 9-col stream */}
-        <div className="flex flex-col gap-14 lg:col-span-9">
+        <div className="flex flex-col gap-14">
           {/* Money-style cluster */}
           <div className="flex flex-col gap-6">
             <SectionLabel href={primaryHref}>{primaryLabel}</SectionLabel>
@@ -338,7 +347,7 @@ export function MoneyTechBand({
         </div>
 
         {/* 3-col Editor's Picks */}
-        <div className={`flex flex-col gap-5 lg:col-span-3 ${RULE}`}>
+        <div className={`flex flex-col gap-5 ${RULE}`}>
           <EditorsPicks posts={picks} categories={categories} />
         </div>
       </div>
@@ -370,8 +379,8 @@ export function CategoryQuad({
 } & WithCats) {
   if (columns.length === 0) return null;
   return (
-    <section className={`${PAD} py-10 sm:py-16`} aria-label="More from Brandish">
-      <div className="grid grid-cols-1 gap-[30px] sm:grid-cols-2 xl:grid-cols-4">
+    <section className={`${PAD} py-10 tab:py-[60px]`} aria-label="More from Brandish">
+      <div className="grid grid-cols-1 tab:grid-cols-2 lap:grid-cols-4 gap-4 tab:gap-6 lap:gap-[30px]">
         {columns.map((col) => (
           <div key={col.slug} className="flex flex-col gap-5">
             <SectionLabel href={categoryHref(col.slug)}>{col.label}</SectionLabel>

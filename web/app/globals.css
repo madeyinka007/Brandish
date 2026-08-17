@@ -29,6 +29,17 @@
   --color-field-dark: #333333;
 
   --font-serif: var(--font-plex-serif), Georgia, "Times New Roman", serif;
+
+  /* Public "Smart Times" responsive breakpoints — the design's exact stops (additive to the
+     default sm/md/lg/xl, which the admin still uses). Generates tab:/lap:/wide:/fixed: variants.
+       tab   768px — rails unstack side-by-side; mobile nav + drawer appear
+       lap   992px — full desktop grids resume (hero 3-col, 9/3 bands, 4-up quad)
+       wide  1200px — page gutter widens to 120px
+       fixed 1440px — columns take their fixed pixel widths (585 / 885 / 420) */
+  --breakpoint-tab: 48rem;
+  --breakpoint-lap: 62rem;
+  --breakpoint-wide: 75rem;
+  --breakpoint-fixed: 90rem;
 }
 
 /* Dark theme — variable overrides only; every public utility that reads these tokens flips.

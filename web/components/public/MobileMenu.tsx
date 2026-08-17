@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
-import { Close } from "./icons";
+import { Close, SOCIAL } from "./icons";
 
 export interface NavItem {
   label: string;
@@ -36,7 +36,7 @@ export default function MobileMenu({
   if (!open) return null;
 
   return (
-    <div onMouseDown={onClose} className="fixed inset-0 z-[120] bg-[rgba(17,17,17,0.55)] lg:hidden">
+    <div onMouseDown={onClose} className="fixed inset-0 z-[120] bg-[rgba(17,17,17,0.55)] lap:hidden">
       <nav
         onMouseDown={(e) => e.stopPropagation()}
         aria-label="Primary"
@@ -63,6 +63,29 @@ export default function MobileMenu({
             {n.label}
           </Link>
         ))}
+
+        {/* Drawer footer — the Subscribe CTA + socials the masthead drops on mobile. */}
+        <div className="mt-auto flex flex-col gap-4 pt-6">
+          <a
+            href="#newsletter"
+            onClick={onClose}
+            className="rounded-sm bg-accent px-5 py-3 text-center text-[12px] font-bold uppercase tracking-[0.08em] text-white transition-colors hover:bg-accent-hover"
+          >
+            Subscribe
+          </a>
+          <div className="flex justify-center gap-2">
+            {SOCIAL.map(({ name, Icon, href }) => (
+              <a
+                key={name}
+                href={href}
+                aria-label={name}
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-line text-ink-700 transition-colors hover:border-accent hover:bg-accent hover:text-white"
+              >
+                <Icon size={18} />
+              </a>
+            ))}
+          </div>
+        </div>
       </nav>
     </div>
   );

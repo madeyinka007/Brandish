@@ -25,7 +25,7 @@ import type { NavItem } from "@/components/public/MobileMenu";
 export const revalidate = 300;
 
 // Shared responsive page gutter (matches the header/footer: 120px at desktop).
-const PAD = "px-4 sm:px-8 lg:px-16 xl:px-[120px]";
+const PAD = "px-5 tab:px-8 lap:px-10 wide:px-[120px]";
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSettings();
@@ -142,7 +142,7 @@ export default async function HomePage() {
           categories={categories}
         />
 
-        <div className={`${PAD} pt-10 sm:pt-16`}>
+        <div className={`${PAD} pt-10 tab:pt-[60px]`}>
           <AdSlot size="leaderboard" />
         </div>
 
@@ -167,7 +167,7 @@ export default async function HomePage() {
           categories={categories}
         />
 
-        <div className={`${PAD} pt-10 sm:pt-16`}>
+        <div className={`${PAD} pt-10 tab:pt-[60px]`}>
           <AdSlot size="leaderboard" />
         </div>
 

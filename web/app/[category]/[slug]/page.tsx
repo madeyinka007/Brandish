@@ -26,7 +26,7 @@ import { Clock, Facebook, Home as HomeIcon, Instagram, MessageCircle, Pinterest,
 
 export const revalidate = 300;
 
-const PAD = "px-4 sm:px-8 lg:px-16 xl:px-[120px]";
+const PAD = "px-5 tab:px-8 lap:px-10 wide:px-[120px]";
 type Params = { params: Promise<{ category: string; slug: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {

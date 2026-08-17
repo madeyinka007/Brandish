@@ -18,7 +18,7 @@ export function HeroCard({ post, categories }: CardProps) {
   return (
     <article className="flex flex-col gap-4">
       <Link href={href} className={titleLink}>
-        <h1 className="text-pretty font-serif text-[28px] font-bold leading-[1.18] sm:text-[34px]">{post.title}</h1>
+        <h1 className="text-pretty font-serif text-[26px] font-bold leading-[1.18] tab:text-[34px]">{post.title}</h1>
       </Link>
       <MetaRow
         label={labelForCategory(post.category, categories)}
