@@ -153,8 +153,11 @@ Resources:
         EntryPoints:
           - bootstrap.ts   # esbuild follows its imports and bundles index.ts + the whole app
         External:
-          # Provided by the Node 20 Lambda runtime — don't bundle (smaller artifact).
-          - '@aws-sdk/*'
+          # NOTE: '@aws-sdk/*' is deliberately NOT external. The Node runtime does ship a
+          # version of the AWS SDK v3, but it pins a specific minor that varies by runtime
+          # version and region. Both functions call SSM on the cold-start path
+          # (lib/loadSecrets.ts) — if that import ever fails to resolve, nothing works at all
+          # — so the SDK is bundled and version-pinned by our own lockfile instead.
           # mongodb's OPTIONAL native/peer deps — not installed, loaded only for features we
           # don't use. Marking external stops esbuild erroring on their dynamic requires.
           - 'mongodb-client-encryption'

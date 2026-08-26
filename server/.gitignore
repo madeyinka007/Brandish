@@ -4,3 +4,9 @@ coverage/
 *.log
 .env
 .env.example
+
+# SAM build output
+.aws-sam/
+
+# Stray Serverless Framework artifact — this project deploys with SAM
+.serverless/

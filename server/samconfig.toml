@@ -1,0 +1,41 @@
+# SAM CLI configuration. This file is what makes the bare `sam deploy` in
+# .github/workflows/deploy-api.yml work — without it the deploy has no stack name, no region
+# and no artifact bucket, and aborts before reaching CloudFormation.
+#
+# Written by hand rather than by `sam deploy --guided` (which needs live AWS credentials).
+# Two values below are assumptions worth confirming before the first deploy:
+#   * region     — us-east-1, per docs/aws-infrastructure.md. SES, ACM certs for CloudFront and
+#                  the CloudFront control plane all want us-east-1, and lib/revalidate.ts
+#                  already hardcodes it for the CloudFront client.
+#   * stack_name — brandish-api-prod. Changing it later creates a SECOND stack rather than
+#                  updating this one, and the DynamoDB table names would then collide.
+#
+# `resolve_s3 = true` lets SAM manage its own artifact bucket, so there is no bucket to create
+# by hand. CAPABILITY_IAM is required because the template provisions API Gateway permissions.
+
+version = 0.1
+
+[default.global.parameters]
+stack_name = "brandish-api-prod"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.validate.parameters]
+lint = true
+
+[default.deploy.parameters]
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+fail_on_empty_changeset = false
+resolve_s3 = true
+s3_prefix = "brandish-api-prod"
+image_repositories = []
+
+[default.sync.parameters]
+watch = true
+
+[default.local_start_api.parameters]
+warm_containers = "EAGER"

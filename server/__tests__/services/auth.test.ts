@@ -7,7 +7,6 @@ jest.mock('../../lib/jwt');
 jest.mock('../../lib/dynamo');
 jest.mock('../../lib/ses');
 
-import { AppError } from '../../lib/errors';
 import { consumeRefreshToken, revokeRefreshToken, storeRefreshToken } from '../../lib/dynamo';
 import { signAccessToken } from '../../lib/jwt';
 import { comparePassword, hashPassword } from '../../lib/password';

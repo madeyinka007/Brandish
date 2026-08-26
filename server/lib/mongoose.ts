@@ -8,6 +8,9 @@ const options = { maxPoolSize: 10, dbName: 'wt-brandish'}; // Atlas M0 max: 500 
 let connPromise: Promise<typeof mongoose>;
 
 declare global {
+  // TypeScript global augmentation requires `var` — `let`/`const` do not create a
+  // property on globalThis.
+  // eslint-disable-next-line no-var
   var _mongooseConnPromise: Promise<typeof mongoose> | undefined;
 }
 

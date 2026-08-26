@@ -16,6 +16,9 @@ const DB_NAME = 'wt-brandish';
 let clientPromise: Promise<MongoClient>;
 
 declare global {
+  // TypeScript global augmentation requires `var` — `let`/`const` do not create a
+  // property on globalThis.
+  // eslint-disable-next-line no-var
   var _mongoClientPromise: Promise<MongoClient> | undefined;
 }
 
