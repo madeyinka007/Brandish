@@ -24,8 +24,27 @@ dotenv.config()
 
 const app = express();
 
+// Allowed browser origins. The Origin header a browser sends NEVER has a trailing slash or
+// path, so the configured value is normalised to scheme://host[:port] before comparison —
+// FRONTEND_URL was stored in SSM as '.../amplifyapp.com/' and the trailing slash made every
+// cross-origin admin request fail the CORS check.
+const allowedOrigins = [process.env.FRONTEND_URL, 'http://localhost:3000']
+  .filter((v): v is string => !!v && v.trim() !== '')
+  .map((v) => {
+    try {
+      return new URL(v.trim()).origin;
+    } catch {
+      return v.trim().replace(/\/+$/, '');
+    }
+  });
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  // Reflect the caller's origin when it is allow-listed. Requests with no Origin header
+  // (server-to-server, curl, Next.js server-side fetches) are not subject to CORS — allow them.
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(null, false);
+  },
   credentials: true,
 }));
 app.use(express.json());

@@ -1,5 +1,9 @@
-# Amplify build spec. This file was previously empty (0 bytes), which left Amplify with no
-# build instructions for the Next.js app.
+# Amplify build spec.
+#
+# THIS FILE MUST LIVE AT THE REPOSITORY ROOT. Amplify only reads `amplify.yml` from the root of
+# the repo — it was previously at web/amplify.yml, where Amplify never saw it, so the app fell
+# back to the auto-generated console build spec (no build commands, baseDirectory `/`) and
+# published the raw repo files as a static site. That is why the live URL 404'd.
 version: 1
 applications:
   # `appRoot: web` is what tells Amplify this is a monorepo and that the Next.js app lives in

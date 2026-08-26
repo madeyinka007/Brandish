@@ -13,8 +13,6 @@ const options = { maxPoolSize: 10 }; // Atlas M0 max: 500 connections total
 // Mongoose collections aren't.
 const DB_NAME = 'wt-brandish';
 
-let clientPromise: Promise<MongoClient>;
-
 declare global {
   // TypeScript global augmentation requires `var` — `let`/`const` do not create a
   // property on globalThis.
@@ -22,20 +20,36 @@ declare global {
   var _mongoClientPromise: Promise<MongoClient> | undefined;
 }
 
-if (process.env.NODE_ENV === 'development') {
-  // In dev, reuse the cached client across hot-reloads.
-  if (!global._mongoClientPromise) {
-    global._mongoClientPromise = new MongoClient(uri, options).connect();
-  }
-  clientPromise = global._mongoClientPromise;
-} else {
-  // In production (Lambda), module scope is reused across warm invocations.
-  clientPromise = new MongoClient(uri, options).connect();
+// Cached connection attempt. Deliberately NOT created at module load — see lib/mongoose.ts:
+// an import-time connect whose rejection has no handler attached kills the Lambda container
+// (Runtime.UnhandledPromiseRejection) instead of failing the one request.
+let clientPromise: Promise<MongoClient> | undefined;
+
+function connect(): Promise<MongoClient> {
+  const p = new MongoClient(uri, options).connect();
+  // On failure, evict the cached attempt so the next request retries rather than reusing a
+  // permanently-rejected promise for the life of the warm container.
+  p.catch(() => {
+    if (clientPromise === p) clientPromise = undefined;
+    if (global._mongoClientPromise === p) global._mongoClientPromise = undefined;
+  });
+  return p;
 }
 
-export default clientPromise;
+export async function getClient(): Promise<MongoClient> {
+  if (process.env.NODE_ENV === 'development') {
+    // In dev, reuse the cached client across hot-reloads.
+    if (!global._mongoClientPromise) global._mongoClientPromise = connect();
+    return global._mongoClientPromise;
+  }
+  // In production (Lambda), module scope is reused across warm invocations.
+  if (!clientPromise) clientPromise = connect();
+  return clientPromise;
+}
+
+export default getClient;
 
 export async function getDb(dbName: string = DB_NAME): Promise<Db> {
-  const client = await clientPromise;
+  const client = await getClient();
   return client.db(dbName);
 }
