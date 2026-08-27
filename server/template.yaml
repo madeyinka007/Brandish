@@ -130,6 +130,20 @@ Resources:
             Method: ANY
             Auth:
               Authorizer: AdminAuthorizer
+        # CORS preflight for the admin surface — deliberately NOT behind the authorizer.
+        # `Method: ANY` above also matches OPTIONS, but a browser never attaches an
+        # Authorization header to a preflight (the CORS spec forbids it), so the authorizer
+        # rejected every preflight with 401 before Express ran. The browser reported that as a
+        # CORS error and the whole admin dashboard failed. An explicit method is more specific
+        # than ANY, so HTTP API matches this route first and lets the cors() middleware in
+        # index.ts answer. Nothing is exposed: a preflight response carries only CORS headers,
+        # and the real GET/POST that follows still goes through AdminAuthorizer.
+        AdminPreflight:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BrandishHttpApi
+            Path: /api/admin/{proxy+}
+            Method: OPTIONS
         # Everything else — public (auth handled inside Express where needed).
         Public:
           Type: HttpApi
@@ -193,6 +207,22 @@ Resources:
         Sourcemap: false
         EntryPoints:
           - authorizer.ts
+
+  # Lets API Gateway actually invoke the authorizer. SAM does not generate this permission for
+  # HTTP API Lambda authorizers, and without it the function has no resource policy at all, so
+  # API Gateway's invoke is denied and the request fails with 500 — never reaching the
+  # authorizer or Express. The symptom is confusing: requests WITHOUT an Authorization header
+  # return a correct 401 (API Gateway short-circuits on the missing identity source before
+  # invoking anything), while every properly authenticated admin request 500s. In a browser
+  # that surfaces as a CORS error rather than an auth error, because API Gateway's 500 carries
+  # no CORS headers.
+  AdminAuthorizerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt AdminAuthorizerFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${BrandishHttpApi}/authorizers/*
 
   # ------------------------------------------------------------------------------------
   # DynamoDB — ephemeral TTL stores (docs/data-model.md). On-demand billing, no backups.
