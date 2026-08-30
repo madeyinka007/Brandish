@@ -54,9 +54,72 @@ interface Paginated<T> {
   totalPages: number;
 }
 
-async function get<T>(path: string, fallback: T): Promise<T> {
+/**
+ * Thrown when the API could not answer at all (network error or 5xx) — as opposed to
+ * answering "that doesn't exist". Callers must let this propagate: during an ISR
+ * revalidation a thrown error makes Next keep serving the last good page and retry later,
+ * whereas returning an empty fallback makes it CACHE the empty render as if it were valid.
+ * That is what turned a brief API throttle into a sitewide blank homepage.
+ */
+export class ApiUnavailableError extends Error {
+  constructor(path: string, cause: string) {
+    super(`API unavailable for ${path}: ${cause}`);
+    this.name = "ApiUnavailableError";
+  }
+}
+
+/** Statuses worth retrying: throttling and transient gateway/server faults. */
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+// A production build prerenders every static page at once, and each page fans out into
+// several API calls. Against a single Lambda that burst is throttled for seconds at a time,
+// so the backoff has to outlast the burst rather than just smooth over one blip:
+// 0.5s + 1s + 2s + 4s ≈ 7.5s of patience before a page is declared un-renderable.
+const MAX_ATTEMPTS = 5;
+const BASE_BACKOFF_MS = 500;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Fetches with a short exponential backoff. The API runs as a single Lambda, so a burst of
+ * concurrent renders (a build prerendering many pages, or several ISR revalidations at once)
+ * can be throttled even though the API is perfectly healthy. Retrying absorbs that instead of
+ * failing a whole build or discarding a good page.
+ */
+async function fetchJson(path: string): Promise<Response> {
+  let lastCause = "network error";
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(`${API_URL}${path}`, { next: { revalidate: REVALIDATE_SECONDS } });
+      if (!RETRYABLE.has(res.status) || attempt === MAX_ATTEMPTS) return res;
+      lastCause = `HTTP ${res.status}`;
+    } catch (err) {
+      lastCause = err instanceof Error ? err.message : "network error";
+      if (attempt === MAX_ATTEMPTS) break;
+    }
+    await sleep(BASE_BACKOFF_MS * 2 ** (attempt - 1)); // 0.5s, 1s, 2s, 4s
+  }
+
+  throw new ApiUnavailableError(path, lastCause);
+}
+
+/**
+ * Content the page cannot meaningfully render without. Throws on any failure so a broken
+ * render is never cached.
+ */
+async function getRequired<T>(path: string): Promise<T> {
+  const res = await fetchJson(path);
+  if (!res.ok) throw new ApiUnavailableError(path, `HTTP ${res.status}`);
+  return (await res.json()) as T;
+}
+
+/**
+ * Peripheral content (sidebar widgets, comment lists). A failure here degrades one region
+ * rather than the page, so it keeps the old swallow-and-default behaviour.
+ */
+async function getOptional<T>(path: string, fallback: T): Promise<T> {
   try {
-    const res = await fetch(`${API_URL}${path}`, { next: { revalidate: REVALIDATE_SECONDS } });
+    const res = await fetchJson(path);
     if (!res.ok) return fallback;
     return (await res.json()) as T;
   } catch {
@@ -64,25 +127,34 @@ async function get<T>(path: string, fallback: T): Promise<T> {
   }
 }
 
+/**
+ * A lookup that may legitimately not exist. Distinguishes "the API says no such record"
+ * (404 -> null, so the page renders notFound()) from "the API is down" (throws), which the
+ * old code conflated — an outage rendered every article as a hard 404 to crawlers.
+ */
+async function getMaybeMissing<T>(path: string): Promise<T | null> {
+  const res = await fetchJson(path);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new ApiUnavailableError(path, `HTTP ${res.status}`);
+  return (await res.json()) as T;
+}
+
 export async function getSettings(): Promise<PublicSettings | null> {
-  return get<PublicSettings | null>("/api/settings", null);
+  // Peripheral: titles/socials. Every caller already handles null, so a failure here should
+  // degrade the chrome, not blank the page.
+  return getOptional<PublicSettings | null>("/api/settings", null);
 }
 
 export async function getCategories(): Promise<Category[]> {
-  return get<Category[]>("/api/categories", []);
+  // Required: an empty list makes every category resolve to notFound().
+  return getRequired<Category[]>("/api/categories");
 }
 
 export async function getPublishedPosts(params: { category?: string; limit?: number } = {}): Promise<Post[]> {
   const qs = new URLSearchParams();
   if (params.category) qs.set("category", params.category);
   qs.set("limit", String(params.limit ?? 60));
-  const res = await get<Paginated<Post>>(`/api/posts?${qs.toString()}`, {
-    data: [],
-    total: 0,
-    page: 1,
-    limit: 0,
-    totalPages: 0,
-  });
+  const res = await getRequired<Paginated<Post>>(`/api/posts?${qs.toString()}`);
   return res.data;
 }
 
@@ -244,7 +316,7 @@ export async function getCategoryPageData(slug: string, page = 1): Promise<Categ
   const [settings, categories, catRes, sitePosts, recentComments] = await Promise.all([
     getSettings(),
     getCategories(),
-    get<Paginated<Post>>(`/api/posts?${qs.toString()}`, { data: [], total: 0, page: p, limit: CATEGORY_PER_PAGE, totalPages: 0 }),
+    getRequired<Paginated<Post>>(`/api/posts?${qs.toString()}`),
     getPublishedPosts({ limit: 24 }),
     getRecentComments(5),
   ]);
@@ -282,12 +354,14 @@ export interface PostComment {
 }
 
 export async function getPostBySlug(slug: string): Promise<Post | null> {
-  return get<Post | null>(`/api/posts/${encodeURIComponent(slug)}`, null);
+  // null ONLY when the API says the slug does not exist; an outage throws instead, so we
+  // never serve (or cache) a 404 for an article that actually exists.
+  return getMaybeMissing<Post>(`/api/posts/${encodeURIComponent(slug)}`);
 }
 
 /** Approved comments for a post — mapped to safe public fields only (never authorEmail). */
 export async function getApprovedComments(postId: string): Promise<PostComment[]> {
-  const raw = await get<Array<Record<string, unknown>>>(`/api/comments?postId=${encodeURIComponent(postId)}`, []);
+  const raw = await getOptional<Array<Record<string, unknown>>>(`/api/comments?postId=${encodeURIComponent(postId)}`, []);
   return (Array.isArray(raw) ? raw : []).map((c) => ({
     _id: String(c._id),
     authorName: typeof c.authorName === "string" ? c.authorName : "Anonymous",
@@ -307,7 +381,7 @@ export interface RecentComment {
 
 /** Recent approved comments across all posts (safe fields only — never authorEmail). */
 export async function getRecentComments(limit = 5): Promise<RecentComment[]> {
-  const raw = await get<Array<Record<string, unknown>>>(`/api/comments`, []);
+  const raw = await getOptional<Array<Record<string, unknown>>>(`/api/comments`, []);
   const list = (Array.isArray(raw) ? raw : []).map((c) => {
     const p = c.post as Record<string, unknown> | null | undefined;
     return {
