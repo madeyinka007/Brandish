@@ -158,9 +158,25 @@ function refreshOnce(): Promise<boolean> {
  * expired — it's short-lived) it transparently refreshes via `/api/auth/refresh` and retries
  * once. Only if the refresh itself fails does it clear the session — so callers redirect to
  * login solely on a genuinely dead session, not on a routine expiry.
+ *
+ * A rejected request is treated the same way as a 401. An admin call rejected by the browser's
+ * CORS check is indistinguishable at this layer from an offline blip — both surface as a
+ * `TypeError` with no response to inspect — and an expired token can land in that bucket: API
+ * Gateway rejects `/api/admin/*` before Express runs, so if that gateway-level 401/403 arrives
+ * without Access-Control-* headers the browser blocks it and `fetch` rejects rather than
+ * resolving with a status. Testing `res.status` alone therefore missed the single most common
+ * failure and left the session wedged until localStorage was cleared by hand. Attempting the
+ * refresh costs one request and recovers the token case; the session is NOT cleared here,
+ * because a genuine network failure must not log a working session out.
  */
 export async function authFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const res = await requestWithToken(path, init);
+  let res: Response;
+  try {
+    res = await requestWithToken(path, init);
+  } catch (err) {
+    if (await refreshOnce()) return requestWithToken(path, init);
+    throw err; // offline, or the session is dead — let the caller surface it
+  }
   if (res.status !== 401) return res;
 
   const refreshed = await refreshOnce();

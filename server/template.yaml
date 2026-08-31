@@ -74,6 +74,48 @@ Resources:
   BrandishHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
+      # CORS is configured HERE, at the gateway, and not only in Express (index.ts) — because
+      # API Gateway answers some requests entirely on its own, before the integration runs:
+      # a missing Authorization header short-circuits to 401 without even invoking the
+      # authorizer, an authorizer that denies produces 403, and throttling/oversized payloads
+      # produce 429/413. Express never sees any of those, so they used to come back with no
+      # Access-Control-* headers at all. A browser reports a header-less response as a CORS
+      # failure rather than as the 401/403 it really is — which is why an expired admin access
+      # token (15-minute TTL, lib/jwt.ts) surfaced as "blocked by CORS policy" and the client's
+      # refresh-and-retry never fired (a CORS-blocked fetch rejects, it has no .status to test).
+      #
+      # Note the interaction with the Express-level cors() middleware: per the AWS docs, "if you
+      # configure CORS for an API, API Gateway ignores CORS headers returned from your backend
+      # integration". So in deployed environments THIS list wins and the cors() call in index.ts
+      # is effectively dead; it still matters for local dev (`npm run dev`), where there is no
+      # API Gateway in front. Keep the two lists in agreement.
+      #
+      # These origins are literals rather than !Ref FrontendUrl because a browser treats
+      # `https://brandish.africa` and `https://www.brandish.africa` as different origins and the
+      # apex 302-redirects to www, so both spellings must be listed — and CloudFormation can't
+      # derive the second from the first. Changing the site's domain therefore means editing
+      # BOTH this list and the /brandish/prod/FRONTEND_URL SSM parameter.
+      CorsConfiguration:
+        AllowOrigins:
+          - https://brandish.africa
+          - https://www.brandish.africa
+          - http://localhost:3000
+        AllowHeaders:
+          - authorization
+          - content-type
+        AllowMethods:
+          - GET
+          - HEAD
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        # Bearer tokens (not cookies) carry the session, so this isn't strictly required today;
+        # it mirrors `credentials: true` in index.ts so behaviour doesn't change if a cookie is
+        # ever introduced. It also forbids AllowOrigins: '*', which is why the list is explicit.
+        AllowCredentials: true
+        MaxAge: 300   # seconds a browser may cache a preflight — cuts repeat OPTIONS traffic
       Auth:
         Authorizers:
           AdminAuthorizer:
@@ -138,6 +180,12 @@ Resources:
         # than ANY, so HTTP API matches this route first and lets the cors() middleware in
         # index.ts answer. Nothing is exposed: a preflight response carries only CORS headers,
         # and the real GET/POST that follows still goes through AdminAuthorizer.
+        # Retained even though the gateway's CorsConfiguration now answers preflights on its
+        # own ("API Gateway automatically sends a response to preflight OPTIONS requests, even
+        # if there isn't an OPTIONS route configured"). An explicit OPTIONS route outranks the
+        # ANY route above, so preflight still bypasses the authorizer if the CORS config is
+        # ever removed or misconfigured — and because the gateway overrides whatever CORS
+        # headers this integration returns, keeping it cannot produce duplicate headers.
         AdminPreflight:
           Type: HttpApi
           Properties:
