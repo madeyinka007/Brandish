@@ -10,9 +10,14 @@ const nextConfig = {
     remotePatterns: [
       { protocol: "https", hostname: "**.cloudfront.net" },
       { protocol: "https", hostname: "**.amazonaws.com" },
-      { protocol: "https", hostname: "**.brandish.com.ng" },
-      { protocol: "https", hostname: "brandish.com.ng" },
-      { protocol: "https", hostname: "picsum.photos" }, // placeholder cover images (seed data)
+      // The live site is brandish.africa. This previously read brandish.com.ng, which matches
+      // nothing we serve — any cover image hosted on our own domain was rejected by the
+      // optimiser with a 400.
+      { protocol: "https", hostname: "**.brandish.africa" },
+      { protocol: "https", hostname: "brandish.africa" },
+      // Placeholder covers for demo/seed posts (scripts/seedPosts.ts). Replace these with real
+      // S3/CloudFront media as the newsroom publishes; the entry can go once none remain.
+      { protocol: "https", hostname: "loremflickr.com" },
     ],
   },
 };

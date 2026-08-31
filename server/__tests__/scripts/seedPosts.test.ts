@@ -44,7 +44,7 @@ describe('seedPosts', () => {
     // every existing post enriched (excerpt/body/cover), demo cleared, 90 created
     expect(posts.updateOne).toHaveBeenCalledTimes(10);
     const firstUpdate = posts.updateOne.mock.calls[0][1].$set;
-    expect(firstUpdate.coverImage).toContain('picsum.photos');
+    expect(firstUpdate.coverImage).toContain('loremflickr.com');
     expect(firstUpdate.body.type).toBe('doc');
     expect(firstUpdate.excerpt.length).toBeGreaterThan(80);
 
@@ -55,7 +55,7 @@ describe('seedPosts', () => {
     const inserted = posts.insertMany.mock.calls.flatMap((c) => c[0]);
     expect(inserted).toHaveLength(90);
     expect(inserted[0]).toMatchObject({ status: 'published', seedDemo: true, category: expect.any(String) });
-    expect(inserted[0].coverImage).toContain('picsum.photos');
+    expect(inserted[0].coverImage).toContain('loremflickr.com');
     expect(inserted[0].publishedAt).toBeInstanceOf(Date);
     // spread across all ten categories
     expect(new Set(inserted.map((d: any) => d.category)).size).toBe(10);

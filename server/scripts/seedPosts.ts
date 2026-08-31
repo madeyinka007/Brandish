@@ -11,7 +11,7 @@ import { slugify } from '../lib/slug';
  *      each with a cover image, excerpt, body, tags, author, view count and a spread publish date.
  *
  * Demo-generated posts carry `seedDemo: true`, so re-running is idempotent (they're cleared and
- * regenerated) and they never collide with real editorial content. Cover images are picsum.photos
+ * regenerated) and they never collide with real editorial content. Cover images are loremflickr
  * placeholders keyed by slug — swap them for real S3/CloudFront media as the newsroom publishes.
  *
  * Run:  node --env-file=.env node_modules/.bin/ts-node scripts/seedPosts.ts
@@ -19,7 +19,27 @@ import { slugify } from '../lib/slug';
  */
 const TARGET_TOTAL = 100;
 
-const cover = (slug: string) => `https://picsum.photos/seed/${slug}/1200/675`;
+/**
+ * Deterministic placeholder cover for a seeded post, keyed by slug so a given post always gets
+ * the same picture, and by category so the picture is at least topically plausible.
+ *
+ * This was picsum.photos until that service went down and took every cover image on the live
+ * site with it — a dead upstream makes next/image time out rather than fail fast, so the
+ * homepage rendered empty boxes. loremflickr is a like-for-like replacement (real, varied
+ * photography rather than flat grey boxes; `lock` keeps the choice stable) but it is still
+ * someone else's free service and can fail exactly the same way. These are placeholders: the
+ * durable fix is real cover art in the S3/CloudFront media library, at which point this helper
+ * and the loremflickr entry in web/next.config.mjs both go away.
+ */
+const coverLock = (slug: string): number => {
+  let h = 0;
+  for (let i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) >>> 0;
+  return (h % 100000) + 1;
+};
+const coverTopic = (cat?: CatVocab): string =>
+  (cat?.theme ?? 'business').toLowerCase().replace(/[^a-z]+/g, ',').replace(/^,|,$/g, '');
+const cover = (slug: string, cat?: CatVocab) =>
+  `https://loremflickr.com/1200/675/${coverTopic(cat)}?lock=${coverLock(slug)}`;
 const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 const rand = (min: number, max: number) => Math.floor(min + Math.random() * (max - min + 1));
 
@@ -205,8 +225,8 @@ export async function seedPosts(): Promise<{ updated: number; created: number; t
         $set: {
           excerpt: makeExcerpt(cat),
           body: makeBody(post.title, cat),
-          coverImage: cover(post.slug),
-          ogImage: cover(post.slug),
+          coverImage: cover(post.slug, cat),
+          ogImage: cover(post.slug, cat),
         },
       },
     );
@@ -230,14 +250,14 @@ export async function seedPosts(): Promise<{ updated: number; created: number; t
       body: makeBody(title, cat),
       excerpt: makeExcerpt(cat),
       format: isVideo ? 'video' : 'article',
-      coverImage: cover(slug),
+      coverImage: cover(slug, cat),
       category: cat.slug,
       tags: [pick(cat.tags), pick(cat.tags)].filter((v, idx, a) => a.indexOf(v) === idx),
       author: pick(authors),
       media: [],
       videoId: isVideo ? 'dQw4w9WgXcQ' : null,
       keywords: `${cat.slug}, ${cat.tags.join(', ')}`,
-      ogImage: cover(slug),
+      ogImage: cover(slug, cat),
       status: 'published',
       viewCount: rand(150, 9500),
       publishedAt,
