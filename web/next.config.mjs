@@ -15,8 +15,14 @@ const nextConfig = {
       // optimiser with a 400.
       { protocol: "https", hostname: "**.brandish.africa" },
       { protocol: "https", hostname: "brandish.africa" },
-      // Placeholder covers for demo/seed posts (scripts/seedPosts.ts). Replace these with real
-      // S3/CloudFront media as the newsroom publishes; the entry can go once none remain.
+      // ImageKit — where the newsroom's real cover art now lives. Without this entry every
+      // cover 400s through /_next/image while still displaying fine in the admin, because the
+      // admin renders plain <img> (no optimiser, no allow-list) and the public site does not.
+      // Scoped to our own ImageKit account so the optimiser can't be used as an open proxy for
+      // arbitrary ImageKit content.
+      { protocol: "https", hostname: "ik.imagekit.io", pathname: "/Brandish1305/**" },
+      // Placeholder covers for demo/seed posts (scripts/seedPosts.ts). Remove once no seeded
+      // post remains — real media belongs on ImageKit above.
       { protocol: "https", hostname: "loremflickr.com" },
     ],
   },
