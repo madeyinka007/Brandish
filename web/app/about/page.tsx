@@ -15,7 +15,20 @@ import { Media, SectionLabel } from "@/components/public/primitives";
 import { NewsletterWidget } from "@/components/public/widgets";
 import { ChevronRight } from "@/components/public/icons";
 
-export const revalidate = 300;
+// Rendered per request rather than prerendered with ISR.
+//
+// This page has no dynamic route segment, so Next prerenders it at build time and refreshes it
+// via ISR. On this Amplify deployment that background revalidation does not actually regenerate
+// the page: it kept reporting `x-nextjs-cache: HIT` while serving build-time HTML, so newly
+// published posts never appeared and deleted ones never left — the homepage only ever changed
+// when a deploy rebuilt it. The sibling routes (/[category], /[category]/[slug]) were always
+// correct precisely because their dynamic segments have no generateStaticParams, so Next could
+// not prerender them and served them on demand instead.
+//
+// force-dynamic makes that the explicit strategy here too. The cost is a compute invocation and
+// the page's API fan-out on every request; the durable fix is on-demand revalidation (have the
+// API call revalidatePath() when a post changes), which would let this go back to being static.
+export const dynamic = "force-dynamic";
 
 const PAD = "px-5 tab:px-8 lap:px-10 wide:px-[120px]";
 
