@@ -55,6 +55,9 @@ Parameters:
   FrontendUrl:
     Type: AWS::SSM::Parameter::Value<String>
     Default: /brandish/prod/FRONTEND_URL
+  RECAPTCHA_SECRET: 
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /brandish/prod/RECAPTCHA_SECRET
 
 Globals:
   Function:
@@ -157,6 +160,7 @@ Resources:
           CF_DOMAIN: !Ref CfDomain
           API_BASE_URL: !Ref ApiBaseUrl
           FRONTEND_URL: !Ref FrontendUrl
+          RECAPTCHA_SECRET: !Ref RECAPTCHA_SECRET
           # Table names — from the tables created in this stack (!Ref returns the table name).
           DYNAMO_DEDUP_TABLE: !Ref ViewDedupTable
           DYNAMO_RATELIMIT_TABLE: !Ref RateLimitTable
