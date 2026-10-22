@@ -159,14 +159,26 @@ export function RankedRow({ post, rank }: { post: Post; rank: number }) {
 export function TrendingItem({ post, categories }: CardProps) {
   const href = postHref(post);
   return (
-    <Link href={href} className="group flex items-start gap-4">
+    // The category tag is a link of its own, so it cannot sit inside the post link: an <a>
+    // nested in an <a> is invalid HTML and React throws a hydration error on it. The title
+    // link is stretched over the whole card instead (after:inset-0), so the card stays
+    // clickable while the tag keeps its own target.
+    <article className="group relative flex items-start gap-4">
       <span className="flex flex-1 flex-col gap-1.5">
-        <Tag label={labelForCategory(post.category, categories)} href={categoryHref(post.category)} />
-        <span className="line-clamp-2 font-serif text-[14px] font-semibold leading-[1.35] text-ink-900 transition-colors group-hover:text-accent">
-          {post.title}
-        </span>
+        <Tag
+          label={labelForCategory(post.category, categories)}
+          href={categoryHref(post.category)}
+          className="relative z-10"
+        />
+        <Link href={href} className="after:absolute after:inset-0 after:content-['']">
+          <span className="line-clamp-2 font-serif text-[14px] font-semibold leading-[1.35] text-ink-900 transition-colors group-hover:text-accent">
+            {post.title}
+          </span>
+        </Link>
       </span>
-      <Media post={post} className="h-[52px] w-[78px] shrink-0" sizes="78px" />
-    </Link>
+      <Link href={href} aria-hidden="true" tabIndex={-1} className="relative z-10 shrink-0">
+        <Media post={post} className="h-[52px] w-[78px] shrink-0" sizes="78px" />
+      </Link>
+    </article>
   );
 }

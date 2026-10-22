@@ -35,6 +35,7 @@ with per-IP deduplication via DynamoDB TTL.
 | Hosting | AWS Amplify Hosting | One Next.js app (`web/`) serving both the public blog and the admin dashboard (`/admin`); backed by CloudFront + S3 |
 | CI/CD | GitHub Actions | Separate jobs for frontend and API |
 | Auth | Custom JWT (API-owned) | Express-issued access tokens + rotating refresh tokens (DynamoDB). Replaced NextAuth. The admin UI (`web/app/admin/`) authenticates against `/api/auth/*` with Bearer tokens stored client-side (`web/lib/auth.ts`); the API is the real boundary (Lambda authorizer + `requireRole`). See `docs/auth.md` |
+| Web analytics | Google Analytics 4 (gtag.js) | Public blog only — `web/components/GoogleAnalytics.tsx` renders the tag in the root layout and skips `/admin`. See `docs/workflows.md` |
 | Rich text | Tiptap | JSON output stored in `posts.body` |
 | Testing | Jest (`ts-jest`) | Unit tests only, in both `web/` and `server/` — DB/AWS clients are mocked, no real network calls. See `docs/development.md` |
 
@@ -117,6 +118,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── CommentThread.tsx
 │   │   ├── CommentForm.tsx        # Includes reCAPTCHA v3
 │   │   ├── NewsletterBanner.tsx
+│   │   ├── GoogleAnalytics.tsx    # (client) GA4 gtag.js — public routes only (skips /admin); rendered from the root layout
 │   │   └── admin/                 # Admin dashboard UI (built)
 │   │       ├── Sidebar.tsx        # Dark nav (MAIN/TOOLS, active state, user card, sign-out); live badges — Comments=pending count, Content=draft count (refetch on nav + BADGE_REFRESH_EVENT)
 │   │       ├── Topbar.tsx         # GlobalSearch + Search button (focuses/opens the search via GlobalSearchHandle ref) + notifications + avatar

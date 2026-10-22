@@ -186,6 +186,7 @@ list of what that role needs attached.
 ```
 NEXT_PUBLIC_API_URL       # API Gateway invoke URL
 NEXT_PUBLIC_RECAPTCHA_KEY # reCAPTCHA v3 site key (public — safe to expose)
+NEXT_PUBLIC_GA_MEASUREMENT_ID # GA4 measurement id (public — safe to expose)
 NEXTAUTH_SECRET           # Must match JWT_SECRET in Lambda
 NEXTAUTH_URL              # Production URL e.g. https://yourdomain.ng
 MONGODB_URI               # Same Atlas URI — used in Next.js server components

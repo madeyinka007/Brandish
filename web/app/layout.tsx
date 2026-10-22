@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Serif, Inter } from "next/font/google";
+import GoogleAnalytics from "../components/GoogleAnalytics";
 import "./globals.css";
 
 // Inter powers the admin dashboard; IBM Plex Serif is the public site's headline face
@@ -27,7 +28,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}>{children}</body>
+      <body style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}>
+        {children}
+        {/* GA4 — public routes only; the component skips /admin (see GoogleAnalytics.tsx) */}
+        <GoogleAnalytics />
+      </body>
     </html>
   );
 }

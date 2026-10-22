@@ -359,9 +359,9 @@ export default function PostsPage() {
                         <div className="h-10 w-14 shrink-0 overflow-hidden rounded-md bg-slate-100">
                           <Thumb post={p} />
                         </div>
-                        <div className="min-w-0">
-                          <div className="truncate font-medium text-slate-800">{p.title || "Untitled"}</div>
-                          <div className="truncate font-mono text-xs text-slate-400">/{p.slug}</div>
+                        <div className="min-w-0 max-w-[22rem] xl:max-w-[30rem]">
+                          <div className="truncate font-medium text-slate-800" title={p.title || "Untitled"}>{p.title || "Untitled"}</div>
+                          <div className="truncate font-mono text-xs text-slate-400" title={`/${p.slug}`}>/{p.slug}</div>
                         </div>
                       </div>
                     </td>

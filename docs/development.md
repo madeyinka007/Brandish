@@ -28,6 +28,7 @@ npm run typecheck
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:3001
 NEXT_PUBLIC_RECAPTCHA_KEY=your_recaptcha_site_key
+NEXT_PUBLIC_GA_MEASUREMENT_ID=G-X97JYWWDPV
 NEXTAUTH_SECRET=any_local_secret_32_chars_min
 NEXTAUTH_URL=http://localhost:3000
 MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/blog

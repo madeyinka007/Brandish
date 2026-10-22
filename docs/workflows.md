@@ -387,6 +387,51 @@ event's `dwellSec` to light that panel up (every other analytics panel works fro
 
 ---
 
+## Google Analytics (GA4) flow
+
+Google's own analytics, alongside the in-house view counter above. It answers the questions the
+`page_views` log can't (acquisition channels, on-site search terms, demographics) but it is a
+separate product with its own UI — the admin dashboard does **not** read from it.
+
+```
+Root layout (web/app/layout.tsx)
+  → <GoogleAnalytics /> (web/components/GoogleAnalytics.tsx — client component)
+    → usePathname() → null on any /admin* route → renders nothing (no gtag, no traffic)
+    → otherwise renders two next/script tags (strategy="afterInteractive"):
+        1. https://www.googletagmanager.com/gtag/js?id=<GA_ID>
+        2. inline bootstrap: dataLayer + gtag() + gtag('js') + gtag('config', GA_ID)
+```
+
+**Measurement id.** `NEXT_PUBLIC_GA_MEASUREMENT_ID` (public — it ships in the page source), with
+the literal `G-X97JYWWDPV` as the component's fallback so an Amplify build that never got the
+console env var still reports. Set the same var in the Amplify console to use a different
+property per environment.
+
+**Route changes are counted automatically.** The blog is a Next.js App Router app: navigation
+between posts/categories is client-side (`<Link>` → `history.pushState`), so a plain page-load
+counter would only ever see the first page. GA's Enhanced Measurement option *"Page changes based
+on browser history events"* (on by default for web data streams) hooks `pushState` and fires a
+`page_view` per route change.
+
+> Do **not** add manual `gtag('event', 'page_view')` calls alongside it — that double-counts every
+> page. If you ever disable that Enhanced Measurement option in the GA UI, you must send
+> `page_view` events yourself from the app instead (and set `send_page_view: false` on the config
+> call so the initial load isn't counted twice).
+
+**Admin traffic is excluded.** The component returns `null` on `/admin*`, so the tag never loads
+there and editor sessions never enter the GA property. The public site has no links into the
+dashboard, so there is no client-side path from a tracked page to a tracked admin page. For
+staff traffic that lands on the *public* site, exclude it in GA itself (Admin → Data Streams →
+Configure tag settings → Define internal traffic → your office/VPN ranges, then activate the
+Internal Traffic data filter).
+
+**Two systems, two purposes.** GA4 is the reader-side product (channels, campaigns, engagement).
+The in-house `page_views` collection + DynamoDB dedup is what the admin Analytics dashboard
+renders (see the *Post view counting flow* above). They are independent — do not try to merge
+them, and do not remove one because the other exists.
+
+---
+
 ## Newsletter send flow
 
 ```
