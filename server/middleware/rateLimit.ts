@@ -18,3 +18,20 @@ export async function rateLimit(req: Request, res: Response, next: NextFunction)
   }
   next();
 }
+
+/**
+ * A rate limiter with its own bucket. The default `rateLimit` above spends the shared
+ * three-per-hour allowance, so an endpoint that is hit by ordinary readers (newsletter
+ * sign-up) gets its own, more generous budget — a reader who comments and subscribes must
+ * not have one action block the other.
+ */
+export function scopedRateLimit(scope: string, max: number) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const ip = extractIp(req);
+    const allowed = await checkRateLimit(ip, scope, max);
+    if (!allowed) {
+      return res.status(429).json({ error: 'Too many requests. Please try again later.', code: 'RATE_LIMITED' });
+    }
+    next();
+  };
+}

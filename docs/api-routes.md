@@ -69,9 +69,9 @@ it (`401 NO_SESSION` if absent, `401 INVALID_TOKEN` if invalid/expired).
 | `GET` | `/api/comments?postId=` | Approved comments for a post. Always filters `status: "approved"` |
 | `POST` | `/api/comments` | Submit comment — reCAPTCHA v3 validation + IP rate limit enforced before write |
 | `POST` | `/api/views/:id` | Record a post view — appends a `page_views` event (every hit) and increments `posts.viewCount` once per IP per 24h (DynamoDB conditional write dedup). Body: `{ referrer?: string }` (the real traffic source; falls back to the `Referer` header) |
-| `POST` | `/api/newsletter` | Subscribe — saves unconfirmed subscriber, sends SES confirmation email |
-| `GET` | `/api/newsletter/confirm?token=` | Confirm subscription — sets `confirmedAt`, clears token |
-| `GET` | `/api/newsletter/unsubscribe?token=` | Unsubscribe — sets `active: false` |
+| `POST` | `/api/newsletter` | Subscribe (double opt-in) — stores a `pending` subscriber and sends the SES confirmation email. Body: `{ email, source?, categories? }` (`source` = `footer` \| `sidebar` — which form the reader used). `201` when a confirmation was sent, `200` when the address was already confirmed |
+| `GET` | `/api/newsletter/confirm?token=` | Confirm subscription — sets `status: "subscribed"` + `confirmedAt`, clears the token, then **302** to `{FRONTEND_URL}/newsletter/confirm?status=confirmed` (or `?status=invalid` for a stale token) |
+| `GET` | `/api/newsletter/unsubscribe?token=` | Unsubscribe — sets `status: "unsubscribed"`, clears the token, then **302** to `{FRONTEND_URL}/newsletter/unsubscribe` |
 | `GET` | `/api/categories` | List **active** categories, ordered — for nav/filter UI |
 | `GET` | `/api/tags` | List all tags (name, slug) — for tag-cloud/filter UI |
 | `GET` | `/api/search?q=` | Search published posts by title/excerpt. Query params: `?q=&page=&limit=` |
@@ -93,9 +93,15 @@ indicate whether the deduped `viewCount` was incremented. Non-blocking from the 
 perspective — fired once on page load by `web/components/public/ViewCounter.tsx`, not awaited.
 Locally, set `AUTH_STORE=memory` to exercise the dedup without DynamoDB.
 
-**`POST /api/newsletter`** — idempotent on email. If the email already exists with
-`active: true` and `confirmedAt` set, return `200` without re-sending. If previously
-unsubscribed (`active: false`), re-activate and re-send confirmation.
+**`POST /api/newsletter`** — double opt-in, idempotent on email. The row is written **before**
+the confirmation email goes out, so a mail failure never loses the address (the admin can
+re-send from `/admin/subscribers`). If the email is already confirmed (`status: "subscribed"`),
+return `200` without re-sending. If previously unsubscribed or still pending, issue a fresh
+token, reset it to `pending` and re-send the confirmation. `400 INVALID_EMAIL` for a malformed
+address, `502 CONFIRMATION_EMAIL_FAILED` when SES rejects the send. Rate limited on its own
+DynamoDB bucket (`ratelimit:newsletter:{ip}`, 20/hour) — the shared three-per-hour allowance
+belongs to comments. Fired from the site footer and the sidebar widget
+(`web/components/public/NewsletterForm.tsx`).
 
 **`GET /api/search?q=`** — matches published posts by `title`/`excerpt` (requires the
 text index noted in [`docs/data-model.md`](data-model.md#posts) — add it if it isn't
@@ -190,9 +196,10 @@ reaches Mongoose.
 
 | Method | Route | Min role | Description |
 |---|---|---|---|
-| `GET` | `/api/admin/subscribers` | `editor` | Confirmed subscriber list |
-| `DELETE` | `/api/admin/subscribers/:id` | `editor` | Remove subscriber (sets `active: false` — soft delete) |
-| `POST` | `/api/admin/newsletter/send` | `editor` | Send newsletter campaign |
+| `GET` | `/api/admin/subscribers` | `editor` | Subscriber list — `{ data, total, page, limit, totalPages, counts }`. Query params: `?status=pending\|subscribed\|unsubscribed&search=&page=&limit=` (`counts` = per-status totals for the dashboard cards). The confirmation token is never returned |
+| `GET` | `/api/admin/subscribers/export` | `editor` | CSV export of the same filter (`Content-Disposition: attachment`) |
+| `POST` | `/api/admin/subscribers/:id/resend` | `editor` | Issue a fresh confirmation token and re-send the opt-in email |
+| `DELETE` | `/api/admin/subscribers/:id` | `editor` | Permanent delete (hard delete — the row is removed, not flagged) |
 
 ### Users
 

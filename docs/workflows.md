@@ -434,54 +434,50 @@ them, and do not remove one because the other exists.
 
 ## Newsletter send flow
 
-```
-POST /api/admin/newsletter/send
-  │
-  ├── 1. Query confirmed subscribers
-  │       { active: true, confirmedAt: { $exists: true, $ne: null } }
-  │       Optional category filter: { categories: { $in: [selectedSlugs] } }
-  │                                  OR categories: [] (empty = subscribed to all)
-  │
-  ├── 2. Fetch recent posts
-  │       { status: 'published', publishedAt: { $gte: sevenDaysAgo } }
-  │       Fields: title, slug, excerpt, coverImage, category, publishedAt
-  │
-  ├── 3. Build HTML per subscriber
-  │       Render email template with post list
-  │       Embed unique unsubscribe link per recipient:
-  │         https://yourdomain.ng/api/newsletter/unsubscribe?token={subscriber.token}
-  │
-  ├── 4. Send via SES in batches of 50
-  │       Use sendBulkTemplatedEmail() or individual sendEmail() calls
-  │       Rate: ~14 emails/second on standard tier
-  │
-  ├── 5. Handle SES bounce webhook (async — via SNS → Lambda)
-  │       Hard bounce → subscribers.updateOne({ email }, { $set: { active: false } })
-  │
-  └── 6. Unsubscribe handler
-          GET /api/newsletter/unsubscribe?token=:token
-          subscribers.updateOne({ token }, { $set: { active: false, token: null } })
-```
+**Collecting subscribers (built).** The site collects them through one component —
+`web/components/public/NewsletterForm.tsx` — rendered in the site footer (every public page)
+and in the sidebar newsletter widget (post pages, category pages, /about). Both post to the
+same endpoint, so there is one code path and one place to change.
 
-**Double opt-in flow (subscribe):**
 ```
-POST /api/newsletter  { email, categories[] }
-  │
-  ├── Check for existing: if active + confirmed → return 200 (already subscribed)
-  │   If inactive → re-activate + re-send confirmation
-  │
-  ├── Generate token: crypto.randomBytes(32).toString('hex')
-  │
-  ├── insertOne (or updateOne if email exists):
-  │     { email, token, active: false, confirmedAt: null, categories, createdAt }
-  │
-  └── SES: send confirmation email
-            Link: https://yourdomain.ng/api/newsletter/confirm?token={token}
+Reader submits the form  (web/components/public/NewsletterForm.tsx)
+  → POST {API}/api/newsletter  { email, source: 'footer' | 'sidebar' }
+       rate limit: own bucket — ratelimit:newsletter:{ip}, 20/hour
+  → routes/newsletter.ts → controllers/newsletter.ts → services/newsletter.ts
+
+services/newsletter.ts subscribe():
+  a. Normalise (trim + lowercase) and validate the address → 400 INVALID_EMAIL
+  b. Look up the existing row by email
+       status 'subscribed' → 200 "You're already subscribed" (no second email)
+       otherwise          → fresh token, status 'pending', confirmedAt null
+  c. WRITE FIRST: create (or update) the subscriber row
+  d. SES: send the confirmation email
+       Link: {API_BASE_URL}/api/newsletter/confirm?token={token}
+     A send failure → 502 CONFIRMATION_EMAIL_FAILED — but the row is already stored, so the
+     admin can re-send the confirmation from /admin/subscribers instead of losing the address.
 
 GET /api/newsletter/confirm?token=:token
-  ├── findOneAndUpdate({ token }, { $set: { confirmedAt: now, active: true, token: null } })
-  └── Redirect to {FRONTEND_URL}/newsletter/confirm (thank you page — web/app/newsletter/confirm/page.tsx)
+  ├── findOneAndUpdate({ token }, { $set: { status: 'subscribed', confirmedAt: now, token: null } })
+  └── 302 → {FRONTEND_URL}/newsletter/confirm?status=confirmed
+            (a stale token lands on the same page with ?status=invalid)
+
+GET /api/newsletter/unsubscribe?token=:token
+  ├── findOneAndUpdate({ token }, { $set: { status: 'unsubscribed', confirmedAt: null, token: null } })
+  └── 302 → {FRONTEND_URL}/newsletter/unsubscribe
 ```
+
+**In the admin.** `/admin/subscribers` lists every sign-up with its status
+(`pending` / `subscribed` / `unsubscribed`), the form it came from, and the date — stat cards
+and status tabs come from the `counts` the API returns alongside the page. Per row the editor
+can **re-send the confirmation** (fresh token + email — the recovery path when SES was down at
+sign-up time) or **remove** the subscriber (a hard delete). `Export CSV` downloads the current
+filter. The list is editor+ (`requireRole('editor', 'super-admin')`).
+
+**Sending campaigns (not built yet).** The campaign sender — `POST /api/admin/newsletter/send`
+— is still a placeholder. It should send only to `{ status: 'subscribed' }`, filtered by
+`categories` when the editor picks some (an empty `categories` array means "all categories"),
+and embed a per-recipient unsubscribe link
+(`{API_BASE_URL}/api/newsletter/unsubscribe?token={subscriber.token}`) in every email.
 
 ---
 

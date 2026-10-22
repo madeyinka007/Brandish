@@ -37,6 +37,11 @@ S3_BUCKET_NAME=your-dev-bucket
 CF_DOMAIN=d1abc.cloudfront.net
 ```
 
+> **Local scratch database.** Both the Mongoose and native-driver connections read
+> `MONGODB_DB` (default `wt-brandish`). Point a local run at a different database to exercise
+> write paths — newsletter sign-ups, seeding, bulk edits — without touching live data:
+> `MONGODB_DB=wt-brandish-test npm run dev` in `server/`.
+
 **`server/.env`:**
 ```env
 MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/blog

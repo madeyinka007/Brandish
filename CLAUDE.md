@@ -36,6 +36,7 @@ with per-IP deduplication via DynamoDB TTL.
 | CI/CD | GitHub Actions | Separate jobs for frontend and API |
 | Auth | Custom JWT (API-owned) | Express-issued access tokens + rotating refresh tokens (DynamoDB). Replaced NextAuth. The admin UI (`web/app/admin/`) authenticates against `/api/auth/*` with Bearer tokens stored client-side (`web/lib/auth.ts`); the API is the real boundary (Lambda authorizer + `requireRole`). See `docs/auth.md` |
 | Web analytics | Google Analytics 4 (gtag.js) | Public blog only — `web/components/GoogleAnalytics.tsx` renders the tag in the root layout and skips `/admin`. See `docs/workflows.md` |
+| Newsletter | Double opt-in (SES) | `POST /api/newsletter` stores a `pending` subscriber and emails a confirmation link; the admin Subscribers page lists every sign-up. See `docs/workflows.md` |
 | Rich text | Tiptap | JSON output stored in `posts.body` |
 | Testing | Jest (`ts-jest`) | Unit tests only, in both `web/` and `server/` — DB/AWS clients are mocked, no real network calls. See `docs/development.md` |
 
@@ -67,7 +68,8 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── search/
 │   │   │   └── page.tsx           # Search results (SSR — dynamic query)
 │   │   ├── newsletter/
-│   │   │   └── confirm/page.tsx   # Email confirmation landing page (public blog — planned; empty placeholder removed)
+│   │   │   ├── confirm/page.tsx   # Double opt-in landing page — /newsletter/confirm?status=confirmed|invalid
+│   │   │   └── unsubscribe/page.tsx # Opt-out landing page — /newsletter/unsubscribe
 │   │   └── admin/                 # ADMIN DASHBOARD — built from the Figma design
 │   │       ├── login/page.tsx     # Sign-in (Figma node 22:2) — POST /api/auth/login, stores Bearer tokens, redirects to /admin
 │   │       └── (dashboard)/       # Gated route group — client auth guard lives in layout.tsx
@@ -86,6 +88,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │           ├── taxonomy/page.tsx              # Tags/Taxonomy (Figma 94:510) — full CRUD on /api/admin/tags (create/edit form + list + inline delete)
 │   │           ├── comments/page.tsx              # Comments moderation (Figma 114:486) — GET /api/admin/comments; stat cards, status tabs, bulk approve/spam/delete, per-comment approve/unapprove/spam/delete; fires BADGE_REFRESH_EVENT
 │   │           ├── analytics/page.tsx             # Analytics dashboard (Figma 135:494) — GET /api/admin/analytics?days=; stat cards+sparklines, SVG traffic area chart, sources donut, top posts, device bars, top countries; range selector + CSV export
+│   │           ├── subscribers/page.tsx          # Subscribers (newsletter audience) — GET /api/admin/subscribers; stat cards + status tabs + search + resend/remove + CSV export
 │   │           ├── settings/page.tsx              # Settings (Figma 188:444) — 5 tabs: Site/Socials/Reading/Comments → GET/PUT /api/admin/settings (singleton); Profile → GET/PUT /api/auth/me + change-password. Socials = facebook/x/linkedin/instagram/youtube URLs + whatsapp number (footer). Shared Save/Discard header + dirty tracking; site tabs read-only for non-super-admin
 │   │           └── [section]/page.tsx  # Placeholder for the remaining sections (/admin/posts, /admin/comments, …)
 │   │   # ([category]/ and search/ public-blog pages are planned; their empty placeholder files were removed during the admin build)
@@ -109,7 +112,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   │   ├── ThemeToggle.tsx    # (client) light/dark via data-theme + brandish-theme localStorage
 │   │   │   ├── SearchOverlay.tsx  # (client) client-side search over loaded posts (no search API yet)
 │   │   │   ├── MobileMenu.tsx     # (client) off-canvas nav
-│   │   │   ├── NewsletterForm.tsx # (client) POST /api/newsletter (degrades gracefully — route not mounted yet)
+│   │   │   ├── NewsletterForm.tsx # (client) POST /api/newsletter — the site's only sign-up form (footer + sidebar widget); `source` records which form
 │   │   │   └── AdSlot.tsx         # Reserved, labelled advertisement placeholder (no CLS)
 │   │   ├── PostCard.tsx           # (public post/category/comment pages — planned; empty scaffolds)
 │   │   ├── PostBody.tsx
@@ -143,6 +146,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── posts.ts               # Posts admin API client — adminList/get/create/update/delete + body(Tiptap doc)/YouTube-id helpers (built)
 │   │   ├── comments.ts            # Comments admin API client — list/moderate(setStatus)/delete via authFetch (built)
 │   │   ├── analytics.ts           # Analytics admin API client — getAnalytics(days) → overview (summary/timeseries/sources/devices/topPosts/topCountries) (built)
+│   │   ├── subscribers.ts         # Subscribers admin API client — list/export/resend/delete (built)
 │   │   ├── settings.ts            # Settings admin API client — getSettings/updateSettings(patch) for the site/appearance/reading/comments singleton (built)
 │   │   ├── profile.ts             # Self-profile client — getMe/updateProfile (mirrors name/avatar/email into the session)/changePassword via /api/auth/me (built)
 │   │   ├── site.ts                # Public homepage data layer (server) — ISR fetchers (getSettings/getCategories/getPublishedPosts) over the public REST API + getHomeData() partitioning + postHref/formatDate/labelForCategory helpers (built)
@@ -184,7 +188,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── posts.ts
 │   │   ├── comments.ts 
 │   │   ├── views.ts                 # POST /api/views/:id — public view tracking (write side of analytics); no auth
-│   │   ├── newsletter.ts
+│   │   ├── newsletter.ts            # /api/newsletter — subscribe (double opt-in) + confirm/unsubscribe redirects
 │   │   ├── categories.ts
 │   │   ├── tags.ts
 │   │   ├── search.ts
@@ -194,7 +198,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │       ├── comments.ts
 │   │       ├── users.ts
 │   │       ├── authors.ts          # GET /api/admin/authors — post-author pool (content-role users); editor+ (uses usersController.listAuthors)
-│   │       ├── subscribers.ts
+│   │       ├── subscribers.ts       # GET /api/admin/subscribers (+ /export, /:id/resend, DELETE /:id) — editor+
 │   │       ├── categories.ts
 │   │       ├── tags.ts
 │   │       ├── media.ts
@@ -209,7 +213,8 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── comments.ts
 │   │   ├── views.ts                # recordView — client ip (x-forwarded-for) + UA + body.referrer → viewsService; always 204 (swallows errors)
 │   │   ├── users.ts
-│   │   ├── newsletter.ts
+│   │   ├── newsletter.ts           # public subscribe / confirm / unsubscribe
+│   │   ├── subscribers.ts          # admin list / CSV export / resend confirmation / delete
 │   │   ├── categories.ts
 │   │   ├── tags.ts
 │   │   ├── uploadUrl.ts
@@ -224,7 +229,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   ├── comments.ts              # Mongoose Comment model; public createComment (strips HTML via sanitize-html, stores `pending`) + admin list/setStatus/delete moderation
 │   │   ├── views.ts                 # Native-driver — recordView: append page_views event (every hit) + deduped `$inc posts.viewCount` (checkAndSetViewDedup); best-effort (bad id → no-op). Write side of analytics
 │   │   ├── users.ts
-│   │   ├── newsletter.ts
+│   │   ├── newsletter.ts           # double opt-in subscribe/confirm/unsubscribe + admin list/export/resend/delete
 │   │   ├── categories.ts
 │   │   ├── tags.ts
 │   │   ├── uploadUrl.ts             # S3 presigned URL only — no DB access at all
@@ -254,7 +259,7 @@ NextAuth. `server/` is the Express API (Lambda/SAM). See `docs/aws-infrastructur
 │   │   │   ├── Category.ts
 │   │   │   ├── Tag.ts
 │   │   │   ├── Comment.ts
-│   │   │   └── Subscriber.ts
+│   │   │   └── Subscriber.ts        # email, status (pending/subscribed/unsubscribed), token, confirmedAt, source, categories
 │   │   ├── slug.ts                # slugify() (pure) + uniqueSlug() (Post-bound, auto-suffix; self-excluding on update)
 │   │   ├── categoryUsage.ts       # isCategoryInUse() — Categories delete-guard seam; wired to PostModel.exists
 │   │   ├── s3.ts                  # S3: createPresignedUpload / deleteObject / keyFromCdnUrl (media module)

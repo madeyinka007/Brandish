@@ -260,25 +260,33 @@ Mongoose model: `web/lib/models/Comment.ts` (identical copy in `server/lib/model
 ```ts
 {
   _id:          ObjectId,
-  email:        string,           // unique index
-  token:        string,           // crypto.randomBytes(32).toString('hex') — single-use
-  confirmedAt:  Date | null,      // null until double opt-in link clicked
-  active:       boolean,          // false = unsubscribed; exclude from all sends
+  email:        string,           // unique index, lowercased + trimmed
+  status:       string,           // 'pending' | 'subscribed' | 'unsubscribed'
+  token:        string | null,    // crypto.randomBytes(32).toString('hex') — single-use; null once confirmed
+  confirmedAt:  Date | null,      // null until the double opt-in link is clicked
+  source:       string,           // which form the reader used — 'footer' | 'sidebar'
   categories:   string[],         // array of category slugs; empty array = all categories
   createdAt:    Date,
+  updatedAt:    Date,
 }
 ```
 
+`status` replaces the older `active` boolean: `pending` = signed up but not yet confirmed,
+`subscribed` = confirmed (only these receive campaigns), `unsubscribed` = opted out.
+
 **Indexes:**
 - `{ email: 1 }` unique — prevents duplicate subscriptions
-- `{ token: 1 }` — confirmation and unsubscribe token lookups
+- `{ status: 1, createdAt: -1 }` — backs the admin list (newest first, filtered by status)
+
+Token lookups are by exact value on `token` (no index needed at this collection size).
 
 Newsletter audience query:
 ```js
-db.subscribers.find({ active: true, confirmedAt: { $exists: true, $ne: null } })
+db.subscribers.find({ status: 'subscribed' })
 ```
 
-Mongoose model: `web/lib/models/Subscriber.ts` (identical copy in `server/lib/models/Subscriber.ts`).
+Mongoose model: `server/lib/models/Subscriber.ts` (the API owns this collection — the blog
+writes to it through `POST /api/newsletter`, never directly).
 
 ---
 

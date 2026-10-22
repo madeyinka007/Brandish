@@ -15,6 +15,7 @@ import {
   LayoutGrid,
   ListTree,
   LogOut,
+  Mail,
   MessageSquare,
   Send,
   Settings,
@@ -37,6 +38,7 @@ const MAIN: NavItem[] = [
   { label: "Users", href: "/admin/users", icon: Users },
   { label: "Media", href: "/admin/media", icon: ImageIcon },
   { label: "Comments", href: "/admin/comments", icon: MessageSquare },
+  { label: "Subscribers", href: "/admin/subscribers", icon: Mail },
 ];
 
 /** Event admin pages fire after a mutation so the sidebar badges refresh without a full reload. */

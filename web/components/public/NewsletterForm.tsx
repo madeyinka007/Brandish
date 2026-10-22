@@ -3,10 +3,20 @@
 import { useState } from "react";
 import { apiFetch, type ApiError } from "@/lib/api";
 
-// Double opt-in newsletter sign-up. Posts to the public /api/newsletter endpoint; that route
-// isn't mounted yet, so a 404 is handled gracefully (the form goes live automatically once the
-// backend ships — no change needed here). See docs/workflows.md (newsletter flow).
-export default function NewsletterForm({ variant = "dark" }: { variant?: "dark" | "light" }) {
+// Double opt-in newsletter sign-up. Posts to the public /api/newsletter endpoint, which stores
+// the address as a `pending` subscriber and emails a confirmation link (see docs/workflows.md).
+// Every sign-up lands in the admin Subscribers list — this component is the only place the
+// public site collects them, so it is used by the footer and the sidebar widget alike.
+//
+// `source` tells the admin which form the reader came from (footer vs sidebar); the variant
+// implies it, so callers don't have to pass it.
+export default function NewsletterForm({
+  variant = "dark",
+  source,
+}: {
+  variant?: "dark" | "light";
+  source?: string;
+}) {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [message, setMessage] = useState("");
@@ -22,14 +32,28 @@ export default function NewsletterForm({ variant = "dark" }: { variant?: "dark" 
     }
     setState("loading");
     try {
-      await apiFetch("/api/newsletter", { method: "POST", body: JSON.stringify({ email }) });
+      const result = await apiFetch<{ status?: string; message?: string }>("/api/newsletter", {
+        method: "POST",
+        body: JSON.stringify({ email, source: source ?? (dark ? "footer" : "sidebar") }),
+      });
       setState("done");
-      setMessage("Almost there — check your inbox to confirm your subscription.");
+      setMessage(
+        result?.message ??
+          (result?.status === "already_subscribed"
+            ? "You're already subscribed to Brandish."
+            : "Almost there — check your inbox to confirm your subscription."),
+      );
       setEmail("");
     } catch (err) {
       const e2 = err as ApiError;
       setState("error");
-      setMessage(e2.status === 404 ? "Newsletter sign-up is launching soon." : "Couldn't subscribe right now. Please try again.");
+      setMessage(
+        e2.status === 404
+          ? "Newsletter sign-up is launching soon."
+          : e2.status === 429
+            ? "Too many sign-up attempts. Please try again later."
+            : "Couldn't subscribe right now. Please try again.",
+      );
     }
   }
 

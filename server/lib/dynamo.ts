@@ -68,21 +68,28 @@ export async function checkAndSetViewDedup(ip: string, postId: string): Promise<
 // instead of DynamoDB (no AWS needed for local comment testing). Keep AUTH_STORE unset in prod.
 const memoryRates = new Map<string, { count: number; resetAtSec: number }>();
 
-export async function checkRateLimit(ip: string): Promise<boolean> {
+/**
+ * `scope` buckets the counter. The default bucket is the one comments have always used
+ * (`ratelimit:<ip>`); other endpoints pass their own scope so one noisy route can't exhaust
+ * another's budget — a reader who posts a comment and subscribes to the newsletter must not
+ * spend the same three-per-hour allowance twice.
+ */
+export async function checkRateLimit(ip: string, scope = 'default', max = RATE_LIMIT_MAX): Promise<boolean> {
+  const key = scope === 'default' ? ip : `${scope}:${ip}`;
   if (process.env.AUTH_STORE === 'memory') {
     const now = Math.floor(Date.now() / 1000);
-    const entry = memoryRates.get(ip);
+    const entry = memoryRates.get(key);
     if (!entry || entry.resetAtSec <= now) {
-      memoryRates.set(ip, { count: 1, resetAtSec: now + RATE_LIMIT_WINDOW_SECONDS });
+      memoryRates.set(key, { count: 1, resetAtSec: now + RATE_LIMIT_WINDOW_SECONDS });
       return true;
     }
     entry.count += 1;
-    return entry.count <= RATE_LIMIT_MAX;
+    return entry.count <= max;
   }
 
   const result = await client.send(new UpdateItemCommand({
     TableName: RATELIMIT_TABLE,
-    Key: { pk: { S: `ratelimit:${ip}` } },
+    Key: { pk: { S: `ratelimit:${key}` } },
     UpdateExpression: 'ADD #count :one SET #ttl = if_not_exists(#ttl, :ttl)',
     ExpressionAttributeNames: { '#count': 'count', '#ttl': 'ttl' },
     ExpressionAttributeValues: {
@@ -93,7 +100,7 @@ export async function checkRateLimit(ip: string): Promise<boolean> {
   }));
 
   const count = Number(result.Attributes?.count?.N ?? '0');
-  return count <= RATE_LIMIT_MAX;
+  return count <= max;
 }
 
 // ---- Refresh-token store (auth module) ----

@@ -3,7 +3,12 @@ import dotenv from 'dotenv'
 dotenv.config();
 
 const uri     = process.env.MONGODB_URI!;
-const options = { maxPoolSize: 10, dbName: 'wt-brandish'}; // Atlas M0 max: 500 connections total
+// MONGODB_DB lets a local run point at a scratch database instead of the live one — handy
+// when exercising write paths (newsletter sign-ups) without touching production data.
+// Both connection paths must resolve the same name or the native-driver collections and the
+// Mongoose ones end up in different databases.
+const dbName = process.env.MONGODB_DB || 'wt-brandish';
+const options = { maxPoolSize: 10, dbName }; // Atlas M0 max: 500 connections total
 
 declare global {
   // TypeScript global augmentation requires `var` — `let`/`const` do not create a

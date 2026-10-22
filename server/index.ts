@@ -19,6 +19,8 @@ import settingsRouter from './routes/settings';
 import adminSettingsRouter from './routes/admin/settings';
 import adminUploadUrlRouter from './routes/admin/upload-url';
 import adminMediaRouter from './routes/admin/media';
+import adminSubscribersRouter from './routes/admin/subscribers';
+import newsletterRouter from './routes/newsletter';
 import dotenv from 'dotenv'
 dotenv.config()
 
@@ -84,6 +86,7 @@ app.use('/api/categories', categoriesRouter);
 app.use('/api/tags', tagsRouter);
 app.use('/api/comments', commentsRouter);
 app.use('/api/views', viewsRouter);
+app.use('/api/newsletter', newsletterRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/admin/users', adminUsersRouter);
 app.use('/api/admin/authors', adminAuthorsRouter);
@@ -95,6 +98,7 @@ app.use('/api/admin/analytics', adminAnalyticsRouter);
 app.use('/api/admin/settings', adminSettingsRouter);
 app.use('/api/admin/upload-url', adminUploadUrlRouter);
 app.use('/api/admin/media', adminMediaRouter);
+app.use('/api/admin/subscribers', adminSubscribersRouter);
 
 // Error middleware must be registered after all routes.
 app.use(errorHandler);

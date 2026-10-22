@@ -11,7 +11,7 @@ const options = { maxPoolSize: 10 }; // Atlas M0 max: 500 connections total
 // Same Atlas database as the Mongoose connection (lib/mongoose.ts uses dbName 'wt-brandish').
 // Both ODM paths must point at the same DB or native-driver collections land somewhere the
 // Mongoose collections aren't.
-const DB_NAME = 'wt-brandish';
+const DB_NAME = process.env.MONGODB_DB || 'wt-brandish';
 
 declare global {
   // TypeScript global augmentation requires `var` — `let`/`const` do not create a
