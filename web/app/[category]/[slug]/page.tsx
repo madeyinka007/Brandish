@@ -234,10 +234,10 @@ export default async function PostPage({ params }: Params) {
 
           {/* Sidebar */}
           <aside className="flex w-full flex-col gap-10 lg:w-[285px] lg:shrink-0 lg:self-stretch lg:border-l lg:border-t lg:border-line lg:pl-[30px] lg:pt-5">
+            <MpuAd />
             <EditorsPicksWidget posts={data.picks} />
             <LatestPostsWidget posts={data.latest} />
             <NewsletterWidget />
-            <MpuAd />
           </aside>
         </div>
       </main>

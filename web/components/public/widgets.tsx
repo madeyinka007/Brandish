@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { type Post, type RecentComment, formatDate, postHref } from "@/lib/site";
 import { Media, SectionLabel } from "./primitives";
@@ -129,9 +130,22 @@ export function MpuAd() {
   return (
     <div className="flex flex-col items-center gap-2 lg:sticky lg:top-6">
       <span className="text-[11px] uppercase tracking-[0.06em] text-ink-400">Advertisement</span>
-      <div className="hatch flex h-[466px] w-full items-center justify-center text-[11px] uppercase tracking-[0.06em] text-ink-400">
-        Ad space · 300×600
-      </div>
+      <a
+        href="https://events.stanbicibtc.com/fuze"
+        target="_blank"
+        rel="noopener noreferrer sponsored"
+        aria-label="Stanbic IBTC Fuze Festival — 19 December 2026, Tafawa Balewa Square, Lagos. Register now (opens in a new tab)"
+        className="block w-full overflow-hidden"
+      >
+        <Image
+          src="/ads/stanbic-fuze-300x250.png"
+          alt="Stanbic IBTC Fuze Festival — Discover, Explore, Shop the City. 19 December 2026, 2PM, Tafawa Balewa Square, Lagos"
+          width={300}
+          height={250}
+          sizes="300px"
+          className="h-auto w-full"
+        />
+      </a>
     </div>
   );
 }

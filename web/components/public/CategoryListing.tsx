@@ -192,6 +192,7 @@ export default function CategoryListing({ data, base }: { data: CategoryPageData
 
         {/* Sidebar */}
         <aside className="flex w-full flex-col gap-10 lg:w-[285px] lg:shrink-0 lg:border-l lg:border-line lg:pl-[30px]">
+          <MpuAd />
           {featured ? (
             <div className="flex flex-col gap-5">
               <div className="flex flex-col gap-3 border-b border-line pb-5">
@@ -213,7 +214,6 @@ export default function CategoryListing({ data, base }: { data: CategoryPageData
           <RecentCommentsWidget comments={recentComments} />
           <LatestPostsWidget posts={latest} />
           <NewsletterWidget />
-          <MpuAd />
         </aside>
       </div>
     </div>
